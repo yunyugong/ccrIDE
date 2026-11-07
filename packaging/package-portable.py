@@ -13,7 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--stage', required=True)
 parser.add_argument('--output', required=True)
 parser.add_argument('--settings', required=True)
-parser.add_argument('--version', default='0.3.4')
+parser.add_argument('--version', default='0.3.5')
 parser.add_argument('--exe')
 parser.add_argument('--compiler', required=True, help='MinGW-w64 root directory containing bin/g++.exe')
 parser.add_argument('--dependencies', default=str(Path(__file__).resolve().parents[1]/'dependencies'))
@@ -76,7 +76,7 @@ shutil.copy2(deps / 'glfw/LICENSE.md', licenses / 'glfw-LICENSE.md')
 shutil.copy2(repo / 'packaging/licenses/json-LICENSE.MIT', licenses / 'json-LICENSE.MIT')
 (licenses / 'zlib-LICENSE.txt').write_text((gcc/'x86_64-w64-mingw32/include/zlib.h').read_text(encoding='utf-8').split('*/',1)[0]+'*/\n',encoding='utf-8')
 (licenses / 'README.txt').write_text('GCC / MinGW / GDB and bundled tools: see toolchain/mingw64/licenses and build-info.txt.\nThe installer is ccrIDE native code; ZIP decompression uses zlib.\n', encoding='utf-8')
-(bundle / '使用说明.txt').write_text('''ccrIDE v0.3.4 + GCC 11.5 / Windows x64 离线便携包
+(bundle / '使用说明.txt').write_text('''ccrIDE v0.3.5 + GCC 11.5 / Windows x64 离线便携包
 
 1. 将整个 ccrIDE 文件夹解压到个人可写目录；不要在压缩包内直接运行。
 2. 双击 ccrIDE-v*.exe，新建或打开 .cpp。F10 编译，F11 编译并运行，F12 运行最近一次成功编译的程序。
@@ -84,11 +84,14 @@ shutil.copy2(repo / 'packaging/licenses/json-LICENSE.MIT', licenses / 'json-LICE
 4. 设置与布局保存在 data；插件在 plugins；编译器在 toolchain/mingw64。
 5. 移动时携带整个文件夹。无需另装 g++，无需配置系统 PATH，无需联网或管理员权限。
 6. 包含已保存的主题、字号、配色、快捷键及标准编译选项；环境覆盖、历史会话、最近文件与未保存代码不随包分发。
-7. Ctrl+点击行号设置断点，F5 开始调试或继续；调试面板提供步入、步过、变量、求值和调用栈。输入文件在设置中指定。样例测试和对拍尚未实现。
+7. Ctrl+点击行号设置断点，F5 开始调试或继续；调试面板提供步入、步过、变量、求值和调用栈。输入文件在设置中指定。样例测试、Subtask 与对拍从“测试”菜单打开。
 8. 红杠表示相对上次保存新增或修改的行，绿杠表示原有或已保存行。编译产物保存在源文件旁的 .ccrIDE-build，带唯一时间标识，不覆盖旧 EXE。
 9. 系统需支持 OpenGL 3.3，并安装可显示中文的系统字体。
 10. 底部“问题 / 输出 / 终端 / 调试”标签可拖动、拆分和停靠；文件图标遵循当前电脑的 Windows 文件关联。旧布局保留，可在“视图 → 恢复默认布局”切换到默认布局。
 11. AI 助手和补全注释已拆为独立插件，主程序不含这两项实现。需要时在“插件 → 安装本地插件”中选择单独下载的插件 ZIP。普通代码补全无需插件。
+12. Alt+单击添加光标，Alt+Shift+拖动列选择，Esc 回到单光标；支持批量输入、删除和粘贴。
+13. 全标签恢复快照每 3 秒保存，启动后可选择恢复副本，不直接覆盖源码。
+14. 编辑菜单的符号重命名需要 clangd 1.1.0 插件；请求预览并应用后自行保存。
 
 EXE 是项目自编写的 Windows 离线安装程序：选择安装目录并点击安装。无需联网，不使用通用 SFX 外壳。
 ZIP 与 EXE 包含相同的程序文件。更新或重新解压请选新目录，避免覆盖已有 data 设置。

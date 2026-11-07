@@ -48,6 +48,13 @@ public:
     size_t m_lineAnchor = 0;
     bool m_lineSelecting = false;   // 行号栏发起的整行选择
 
+    struct Caret {size_t anchor=0,cursor=0;};
+    std::vector<Caret> m_carets;
+    bool m_columnSelecting=false;float m_columnX=0,m_columnY=0;
+    void AddCaret(size_t offset);
+    void ColumnSelect(float x1,float y1,float x2,float y2);
+    void MultiReplace(const std::string& text,int deletion=0,bool distribute=false);
+    bool MultiKeyboard();
     // ---- 滚动 (像素) ----
     float m_scrollX = 0, m_scrollY = 0;
     bool  m_cursorMoved = true;

@@ -6,7 +6,7 @@ for ident in ('ai-assistant','completion-docs','clangd'):
     folder=repo/'build/plugins'/ident
     manifest=json.loads((folder/'plugin.json').read_text(encoding='utf-8'))
     api_version=manifest.get("apiVersion",1)
-    minimum="0.3.4" if manifest.get("apiVersion",1)>=3 else "0.3.0"
+    minimum="0.3.5" if ident=="clangd" else "0.3.0"
     archive=out/f"{ident}-v{manifest['version']}.zip"
     if archive.exists():raise SystemExit(f'Refusing to replace {archive}')
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:

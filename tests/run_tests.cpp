@@ -1169,6 +1169,22 @@ static unsigned long long languageRevision=0;static size_t languageOffset=0;
 static void LanguageDocument(const char* file,const char* text,size_t size,unsigned long long revision){languageFile=file;languageText.assign(text,size);languageRevision=revision;}
 static void LanguageClose(const char*){}
 static void LanguageRequest(const char* kind,const char*,unsigned long long revision,size_t offset){languageRequest=kind;languageRevision=revision;languageOffset=offset;}
+static void TestAllTabRecovery(){
+ namespace fs=std::filesystem;auto root=fs::temp_directory_path()/(L"ccride-alltabs-"+std::to_wstring(GetCurrentProcessId()));fs::create_directories(root);
+ auto saved=std::move(g_app.editors);int active=g_app.active;auto dir=g_app.dataDir;auto oldSnapshot=std::move(g_app.recoverSnapshot);auto oldSelection=std::move(g_app.recoverSelection);bool pending=g_app.recoverPending;
+ g_app.editors.clear();g_app.dataDir=root.wstring();g_app.active=-1;g_app.NewFile();g_app.NewFile();
+ auto original=root/"original.cpp";utils::WriteFileU8(original.wstring(),"int original;");
+ g_app.editors[0]->SetText("");g_app.editors[1]->SetText("int changed;");g_app.editors[1]->m_path=original.wstring();g_app.editors[1]->m_dirty=true;
+ g_app.SaveRecovery();recovery::Snapshot snapshot;std::string error;CHECK(recovery::Load((root/"recovery").wstring(),snapshot,error));CHECK(snapshot.tabs.size()==2&&snapshot.tabs[0].text.empty()&&snapshot.tabs[1].text=="int changed;");
+ g_app.recoverSnapshot=snapshot;g_app.recoverSelection={1,1};g_app.editors[1]->SetText("unrelated current");g_app.SaveRecovery();recovery::Snapshot unchanged;CHECK(recovery::Load((root/"recovery").wstring(),unchanged,error));CHECK(unchanged.tabs[1].text=="int changed;");
+ utils::WriteFileU8(original.wstring(),"external change");g_app.editors.clear();g_app.active=-1;g_app.ApplyRecovery(true);CHECK(g_app.editors.size()==2&&g_app.editors[0]->m_text.empty()&&g_app.editors[1]->m_text=="int changed;");CHECK(g_app.editors[0]->m_path.empty()&&g_app.editors[1]->m_path.empty());std::string content;CHECK(utils::ReadFileU8(original.wstring(),content)&&content=="external change");
+ g_app.editors=std::move(saved);g_app.active=active;g_app.dataDir=dir;g_app.recoverSnapshot=std::move(oldSnapshot);g_app.recoverSelection=std::move(oldSelection);g_app.recoverPending=pending;fs::remove_all(root);
+}
+static void TestMultiCaret(){
+ CodeEditor ed;ed.SetText("abc\nabc\n");ed.RebuildLines();ed.m_cursor=ed.m_selAnchor=1;ed.AddCaret(5);ed.MultiReplace("X");CHECK_EQ(ed.m_text,std::string("aXbc\naXbc\n"));ed.Undo();CHECK_EQ(ed.m_text,std::string("abc\nabc\n"));ed.Redo();CHECK_EQ(ed.m_text,std::string("aXbc\naXbc\n"));
+ ed.SetText("abc\nabc\n");ed.RebuildLines();ed.m_carets={{0,2},{4,6}};ed.MultiReplace("q\nz",0,true);CHECK_EQ(ed.m_text,std::string("qc\nzc\n"));ed.Undo();CHECK_EQ(ed.m_text,std::string("abc\nabc\n"));
+ ed.SetText(u8"中x\n文y");ed.RebuildLines();ed.m_carets={{3,3},{8,8}};ed.MultiReplace("",-1);CHECK_EQ(ed.m_text,std::string("x\ny"));
+}
 static void TestLanguageHost() {
     auto saved=std::move(g_app.editors);int savedIndex=g_app.active;auto originalSettings=g_app.settings;
     g_app.editors.clear();g_app.editors.push_back(std::make_unique<CodeEditor>());g_app.active=0;
@@ -1181,6 +1197,11 @@ static void TestLanguageHost() {
     publish({{"kind","status"},{"ready",true}});setup();
     CHECK(ed.m_languagePending && ed.m_compOpen && ed.m_compItems.empty());CHECK(languageRequest=="completion");
     auto completion=[&](){return nlohmann::json{{"kind","completion"},{"file",languageFile},{"revision",languageRevision},{"offset",languageOffset},{"items",nlohmann::json::array({{{"label","value"},{"text","value"},{"detail","int"},{"start",languageOffset-2},{"end",languageOffset}}})}};};
+    language::RequestRename(ed,"renamed");CHECK(languageRequest=="rename:renamed");
+    auto rename=[&](){return nlohmann::json{{"kind","rename"},{"file",languageFile},{"revision",languageRevision},{"offset",languageOffset},{"edits",nlohmann::json::array({{{"file",languageFile},{"range",{{"start",{{"line",0},{"character",15}}},{"end",{{"line",0},{"character",20}}}}},{"text","renamed"}}})}};};
+    publish(rename());CHECK(language::ApplyRename());CHECK(ed.m_text.find("int renamed")!=std::string::npos);ed.Undo();CHECK(ed.m_text==text);
+    setup();language::RequestRename(ed,"renamed");publish(rename());ed.m_text+=" ";CHECK(!language::ApplyRename());CHECK(ed.m_text.find("renamed")==std::string::npos);
+    setup();
     auto stale=completion();ed.m_text.insert(0," ");publish(stale);CHECK(ed.m_compItems.empty());
     setup();auto current=completion();ed.CloseCompletion();publish(current);CHECK(!ed.m_compOpen);
     setup();publish(completion());CHECK(ed.m_compItems.size()==1);CHECK(ed.AcceptCompletion());CHECK(ed.m_text.find("box.value")!=std::string::npos);
@@ -1381,6 +1402,8 @@ int main(int argc, char** argv) {
     TestProcStatusThreadSafe();
     TestCommentLinks();
     TestLanguageHost();
+    TestMultiCaret();
+    TestAllTabRecovery();
     TestCompilerDiscovery();
     TestOptionalPluginLifecycle();
     TestCompletionDocumentation();

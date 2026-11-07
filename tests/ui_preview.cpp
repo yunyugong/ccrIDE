@@ -390,6 +390,26 @@ int main(int argc, char** argv) {
             }
             if(!found){++failures;printf("FAIL real clangd completion preview\n");}
         }
+        if(scenario==0 || scenario==2){
+            auto* ed=g_app.ActiveEditor();ed->CloseCompletion();ed->SetText("abcd\nabcd\nabcd\n");ed->RebuildLines();ed->m_scrollY=ed->m_scrollX=0;ed->ColumnSelect(ed->CharW(),0,ed->CharW()*3,ed->LineH()*2.5f);
+            for(int frame=0;frame<3;++frame){
+                ImGui_ImplOpenGL3_NewFrame();ImGui_ImplGlfw_NewFrame();io.AddMousePosEvent(-100,-100);ImGui::NewFrame();
+                DrawMainMenuBar();DrawWorkspaceToolbar();DrawStatusBar();DrawActivityBar();DrawWorkspaceDock();DrawEditorWindow();
+                ImGui::Render();glViewport(0,0,width,height);glClear(GL_COLOR_BUFFER_BIT);ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());if(frame==2)SaveFrame(output/(scenario==0?"column-dark.bmp":"column-compact.bmp"),width,height);
+            }
+            ed->MultiReplace("");if(ed->m_text!="ad\nad\nad\n"){++failures;printf("FAIL column editing\n");}ed->Undo();
+            bool open=true;
+            for(int frame=0;frame<3;++frame){
+                ImGui_ImplOpenGL3_NewFrame();ImGui_ImplGlfw_NewFrame();ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(4,4));ImGui::SetNextWindowSize(ImVec2(width-8,height-8));contest::Draw(&open);
+                ImGui::Render();glViewport(0,0,width,height);glClear(GL_COLOR_BUFFER_BIT);ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());if(frame==2)SaveFrame(output/(scenario==0?"tests-dark.bmp":"tests-compact.bmp"),width,height);
+            }
+            if(scenario==0){
+                recovery::Tab tab;tab.name="未保存.cpp";tab.text="int main(){}";tab.dirty=true;g_app.recoverSnapshot.tabs={tab,tab};g_app.recoverSnapshot.tabs[1].name="另一个标签.cpp";g_app.recoverSelection={1,1};g_app.recoverPending=true;
+                for(int frame=0;frame<3;++frame){ImGui_ImplOpenGL3_NewFrame();ImGui_ImplGlfw_NewFrame();ImGui::NewFrame();DrawRecoverModal();ImGui::Render();glViewport(0,0,width,height);glClear(GL_COLOR_BUFFER_BIT);ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());if(frame==2)SaveFrame(output/"all-tabs-recovery.bmp",width,height);}
+                g_app.recoverSnapshot.tabs.clear();g_app.recoverSelection.clear();g_app.recoverPending=false;
+            }
+        }
         if(scenario==0) UnloadDocumentationTestPlugin();
         g_shellIcons.Clear();
         ImGui_ImplOpenGL3_Shutdown(); ImGui_ImplGlfw_Shutdown(); ImGui::DestroyContext();

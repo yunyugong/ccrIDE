@@ -1,10 +1,10 @@
-# clangd 插件 1.0.0
+# clangd 插件 1.1.0
 
-需要 ccrIDE 0.3.4 或以上。核心不依赖 clangd；安装插件后由独立进程提供语义服务，UI DLL 仍在 IDE 进程内执行。
+需要 ccrIDE 0.3.5 或以上。核心不依赖 clangd；安装插件后由独立进程提供语义服务，UI DLL 仍在 IDE 进程内执行。
 
 ## 安装与配置
 
-在“插件 → 安装本地插件”选择 clangd-v1.0.0.zip。离线包附带官方 Windows x64 clangd 23.1.0、资源头文件和许可证；无需另外安装 LLVM。插件设置位于“插件 → clangd 设置”，保存到 data/plugins/clangd/settings.json。
+在“插件 → 安装本地插件”选择 clangd-v1.1.0.zip。离线包附带官方 Windows x64 clangd 23.1.0、资源头文件和许可证；无需另外安装 LLVM。插件设置位于“插件 → clangd 设置”，保存到 data/plugins/clangd/settings.json。
 
 - clangd 路径：留空先查找插件内 toolchain/bin/clangd.exe，再查找 PATH；也可填写外部版本的完整路径。
 - 编译数据库目录：填写 compile_commands.json 所在目录，或留空由 clangd 自动查找。CMake 工程可在支持的生成器上配置 CMAKE_EXPORT_COMPILE_COMMANDS=ON。
@@ -25,7 +25,7 @@ clangd 由 Windows Job 管理；停用、卸载、退出或协议超限时回收
 ## 当前边界
 
 - 未命名文件仍使用轻量补全；语义同步上限每文件 2 MiB、最多 32 个文档/共 16 MiB。
-- 首版只接入补全、诊断、定义跳转；引用查找、重命名、格式化、代码动作和多目标工程管理未实现。
+- 首版只接入补全、诊断、定义跳转；已新增语义重命名预览，见 workflows.md；引用查找、格式化、代码动作和多目标工程管理未实现。
 - 不执行补全中的额外文件编辑或 snippet；函数接受后按现有习惯插入括号。自动 include 关闭。
 - 补全注释插件目前显示轻量补全的详情；clangd 候选尚未连接文档解析、来源选择与可点击注释功能。
 - 宏、条件编译和跨翻译单元结果取决于数据库、头文件与索引；没有数据库不代表已得到真实工程配置。

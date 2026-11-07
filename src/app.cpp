@@ -1,3 +1,4 @@
+#include "contest.h"
 #include "language_host.h"
 #include "app.h"
 #include "ui_helpers.h"
@@ -181,12 +182,20 @@ bool App::Init() {
     // 3. 插件目录 (DLL 加载需在 ImGui 上下文创建后, 由 main 调用 ScanAndLoad)
     plugins.LoadBundledCatalog();
 
-    // 4. 恢复检查
-    std::string autosave;
-    if (utils::ReadFileU8(dataDir + L"\\autosave.cpp", autosave) && !autosave.empty()) {
-        recoverContent = autosave;
-        recoverPending = true;
+    // Read all tab snapshots before the session creates clean editors.
+    std::string recoveryError;
+    if(recovery::Load(dataDir+L"\\recovery",recoverSnapshot,recoveryError)) {
+        for(const auto& tab:recoverSnapshot.tabs)recoverSelection.push_back(tab.dirty || tab.path.empty() || GetFileAttributesW(utils::U8ToW(tab.path).c_str())==INVALID_FILE_ATTRIBUTES);
+        recoverPending=std::find(recoverSelection.begin(),recoverSelection.end(),1)!=recoverSelection.end();
+        if(!recoverPending){recoverSnapshot.tabs.clear();recoverSelection.clear();}
+    } else {
+        std::string legacy;
+        if(utils::ReadFileU8(dataDir+L"\\autosave.cpp",legacy)&&!legacy.empty()) {
+            recovery::Tab tab;tab.name="旧版恢复.cpp";tab.text=legacy;tab.dirty=true;
+            recoverSnapshot.tabs.push_back(std::move(tab));recoverSelection.push_back(1);recoverPending=true;
+        }
     }
+    if(!recoveryError.empty())console.Append(recoveryError+"\n",IM_COL32(240,180,80,255));
 
     // 5. 恢复上次会话 (打开的标签列表), 无会话则新建空文件
     LoadSession();
@@ -1106,6 +1115,7 @@ void App::PumpProcResults() {
 //  退出: 等待后台线程结束 (线程持有 this / 引用全局, 不可在运行中销毁)
 // ===================================================================
 void App::Shutdown() {
+    contest::Shutdown();
     compilerScanCancel=true;
     if(compilerScanThread.joinable())compilerScanThread.join();
     killRequested.store(true);
@@ -1119,14 +1129,30 @@ void App::Shutdown() {
 // ===================================================================
 //  自动保存
 // ===================================================================
+void App::SaveRecovery() {
+    if(!recoverSnapshot.tabs.empty())return; // Never overwrite a recovery decision still awaiting the user.
+    recovery::Snapshot snapshot;snapshot.active=active;
+    for(const auto& ed:editors){recovery::Tab tab;tab.name=ed->m_name;tab.path=utils::WToU8(ed->m_path);tab.text=ed->m_text;tab.baseline=ed->m_savedBaseline;tab.cursor=ed->m_cursor;tab.anchor=ed->m_selAnchor;tab.dirty=ed->m_dirty;tab.encoding=ed->m_enc;tab.scrollX=ed->m_scrollX;tab.scrollY=ed->m_scrollY;tab.breakpoints=ed->m_breakpoints;snapshot.tabs.push_back(std::move(tab));}
+    std::string error;if(!recovery::Save(dataDir+L"\\recovery",snapshot,error))console.Append(error+"\n",IM_COL32(240,100,80,255));
+}
+void App::ApplyRecovery(bool restore) {
+    int recoveredActive=-1;
+    for(size_t i=0;restore&&i<recoverSnapshot.tabs.size();++i)if(i<recoverSelection.size()&&recoverSelection[i]){
+        const auto& tab=recoverSnapshot.tabs[i];NewFile();auto* ed=ActiveEditor();
+        ed->SetText(tab.text);ed->m_name=tab.name+" [恢复副本]";ed->m_path.clear();
+        ed->m_savedBaseline=tab.baseline;ed->m_dirty=true;ed->m_enc=tab.encoding;ed->RebuildLines();
+        ed->m_cursor=tab.cursor;ed->m_selAnchor=tab.anchor;ed->m_selActive=tab.cursor!=tab.anchor;ed->m_scrollX=tab.scrollX;ed->m_scrollY=tab.scrollY;ed->m_breakpoints=tab.breakpoints;
+        if(int(i)==recoverSnapshot.active)recoveredActive=active;
+    }
+    if(recoveredActive>=0)active=recoveredActive;
+    recoverSnapshot.tabs.clear();recoverSelection.clear();recoverPending=false;
+    // Consume legacy data once; keep a migration copy instead of deleting user content.
+    MoveFileExW((dataDir+L"\\autosave.cpp").c_str(),(dataDir+L"\\autosave.cpp.migrated").c_str(),MOVEFILE_REPLACE_EXISTING);
+    SaveRecovery();
+}
 void App::AutoSaveTick(float dt) {
-    autosaveTimer += dt;
-    if (autosaveTimer < 3.0f) return;
-    autosaveTimer = 0;
-    CodeEditor* ed = ActiveEditor();
-    if (!ed) return;
-    utils::WriteFileU8(dataDir + L"\\autosave.cpp", ed->m_text);
-    SaveSession();   // 会话也定期保存, 崩溃后可恢复标签列表
+    autosaveTimer+=dt;if(autosaveTimer<3)return;autosaveTimer=0;
+    SaveSession();
 }
 
 void App::SaveSettings() {
@@ -1139,6 +1165,7 @@ void App::SaveSettings() {
 //  会话恢复: 打开的标签列表 + 光标/滚动位置
 // ===================================================================
 void App::SaveSession() {
+    SaveRecovery();
     using json = nlohmann::json;
     try {
         json js;

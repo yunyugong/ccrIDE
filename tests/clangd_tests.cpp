@@ -33,6 +33,8 @@ int wmain(int argc,wchar_t** argv) {
     CHECK(wait([](const auto& e){return e.value("kind","")=="diagnostics"&&e.value("revision",0)==3&&!e.at("items").empty();}));
     text="struct Item { int value; };\nint main(){Item x; return x.value;}\n";offset=text.rfind("value")+2;session.Document(key,text,4);session.Request("definition",key,4,offset);
     CHECK(wait([&](const auto& e){return e.value("kind","")=="definition"&&!e.value("failed",false)&&e.value("target","")==key&&e.at("position").at("line")==0;}));
+    text="int value;\nint f(){int value=3;return value;}\nint g(){return value;}\n";session.Document(key,text,7);session.Request("rename:renamed",key,7,5);
+    CHECK(wait([](const auto& e){return e.value("kind","")=="rename"&&!e.value("failed",false)&&e.at("edits").size()==2&&e.at("edits")[0].at("text")=="renamed";}));
     // A real unexpected service exit must be reported, and a fresh process can reconnect.
     bool killed=false;HANDLE snapshot=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);PROCESSENTRY32W process{};process.dwSize=sizeof(process);
     if(snapshot!=INVALID_HANDLE_VALUE){if(Process32FirstW(snapshot,&process))do{if(process.th32ParentProcessID==GetCurrentProcessId()&&_wcsicmp(process.szExeFile,L"clangd.exe")==0){HANDLE child=OpenProcess(PROCESS_TERMINATE,FALSE,process.th32ProcessID);if(child){killed=TerminateProcess(child,42)!=FALSE;CloseHandle(child);}}}while(Process32NextW(snapshot,&process));CloseHandle(snapshot);}

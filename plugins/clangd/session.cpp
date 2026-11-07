@@ -35,7 +35,7 @@ void Session::Start(Config config) {
             bool initialized=false;std::string wire;lsp::Framer framer;ULONGLONG started=GetTickCount64(),rateStart=started;size_t rateBytes=0;
             auto send=[&](json message){wire+=lsp::Frame(message);if(wire.size()>8*1024*1024)throw std::runtime_error("LSP send limit");};
             auto notify=[&](const std::string& method,json params){send({{"jsonrpc","2.0"},{"method",method},{"params",std::move(params)}});};
-            auto failed=[&](const Pending& p){Event({{"kind",p.kind},{"file",p.file},{"revision",p.revision},{"offset",p.offset},{"failed",true}});};
+            auto failed=[&](const Pending& p){Event({{"kind",p.kind.rfind("rename:",0)==0?"rename":p.kind},{"file",p.file},{"revision",p.revision},{"offset",p.offset},{"failed",true}});};
             auto reply=[&](const json& message) {
                 if(message.value("jsonrpc",std::string{})!="2.0")throw std::runtime_error("Bad JSON-RPC version");
                 if(message.contains("method")) {
@@ -89,6 +89,14 @@ void Session::Start(Config config) {
                         items.push_back({{"label",label},{"text",text},{"detail",item.value("detail",std::string{}).substr(0,4096)},{"symbolKind",symbolKind},{"callable",symbolKind==2||symbolKind==3||symbolKind==4},{"start",begin},{"end",end}});
                     }
                     Event({{"kind",p.kind},{"file",p.file},{"revision",p.revision},{"offset",p.offset},{"items",std::move(items)}});
+                } else if(p.kind.rfind("rename:",0)==0) {
+                    json edits=json::array();
+                    auto append=[&](const std::string& uri,const json& changes){auto file=lsp::Path(uri);for(const auto& change:changes){if(edits.size()>=5000)throw std::runtime_error("Rename edit limit");edits.push_back({{"file",file},{"range",change.at("range")},{"text",change.at("newText")}});}};
+                    if(!result.is_null()){
+                        if(result.contains("changes"))for(auto it=result["changes"].begin();it!=result["changes"].end();++it)append(it.key(),it.value());
+                        if(result.contains("documentChanges"))for(const auto& change:result["documentChanges"]){if(!change.contains("textDocument"))throw std::runtime_error("File operations unsupported");append(change.at("textDocument").at("uri"),change.at("edits"));}
+                    }
+                    Event({{"kind","rename"},{"file",p.file},{"revision",p.revision},{"offset",p.offset},{"edits",std::move(edits)}});
                 } else {
                     json location=result.is_array()?(result.empty()?json():result[0]):result;
                     if(location.is_null()){failed(p);return;}
@@ -138,7 +146,9 @@ void Session::Start(Config config) {
                             deferred.erase(kind);
                             for(auto it=pending.begin();it!=pending.end();)if(it->second.kind==kind){notify("$/cancelRequest",{{"id",it->first}});it=pending.erase(it);}else ++it;
                             auto id=++next;size_t offset=command.at("offset").get<size_t>();pending[id]={kind,file,doc->second.text,doc->second.revision,offset,GetTickCount64()};
-                            send({{"jsonrpc","2.0"},{"id",id},{"method",kind=="completion"?"textDocument/completion":"textDocument/definition"},{"params",{{"textDocument",{{"uri",uri}}},{"position",lsp::Position(doc->second.text,offset)}}}});
+                            json params={{"textDocument",{{"uri",uri}}},{"position",lsp::Position(doc->second.text,offset)}};
+                            bool rename=kind.rfind("rename:",0)==0;if(rename)params["newName"]=kind.substr(7);
+                            send({{"jsonrpc","2.0"},{"id",id},{"method",rename?"textDocument/rename":kind=="completion"?"textDocument/completion":"textDocument/definition"},{"params",std::move(params)}});
                         }
                     }
                     for(auto it=deferred.begin();it!=deferred.end();)if(GetTickCount64()-it->second.value("queuedAt",0ull)>8000) {

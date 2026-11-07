@@ -1,0 +1,80 @@
+{
+  "environment": {
+    "os": "Windows-10-10.0.22631-SP0",
+    "cpu": "AMD Ryzen 5 7500F 6-Core Processor             ",
+    "ramBytes": 16754126848,
+    "compiler": "MinGW-w64 GCC 11.5.0",
+    "cmakeBuildType": "",
+    "cxxFlags": "",
+    "plugins": [],
+    "workload": "SetText + RebuildLines + CodeModel Ensure; repeated int declarations; 7 samples; maximum reported as p95 for n=7",
+    "excludes": [
+      "cold startup",
+      "idle CPU",
+      "disk open",
+      "UI latency",
+      "clangd",
+      "project indexing"
+    ]
+  },
+  "builds": {
+    "0.3.4": {
+      "exeSha256": "b86660fba08f0681521663795a167f9f102e5f4fef6df5a49a1348d0733052f0",
+      "measurements": [
+        {
+          "bytes": 100008,
+          "samples": 7,
+          "medianMs": 7.3624,
+          "p95Ms": 8.3838,
+          "peakWorkingSetBytes": 10858496,
+          "privateBytes": 1904640
+        },
+        {
+          "bytes": 1000008,
+          "samples": 7,
+          "medianMs": 63.1515,
+          "p95Ms": 66.6516,
+          "peakWorkingSetBytes": 29376512,
+          "privateBytes": 4595712
+        },
+        {
+          "bytes": 4000032,
+          "samples": 7,
+          "medianMs": 245.839,
+          "p95Ms": 253.46,
+          "peakWorkingSetBytes": 93433856,
+          "privateBytes": 8151040
+        }
+      ]
+    },
+    "0.3.5": {
+      "exeSha256": "af32b6ad70f10f4e1a3bfad5c2c40a388f9e90a49f04c078ddc2e5299217b1f5",
+      "measurements": [
+        {
+          "bytes": 100008,
+          "samples": 7,
+          "medianMs": 6.4463,
+          "p95Ms": 7.371,
+          "peakWorkingSetBytes": 10887168,
+          "privateBytes": 1884160
+        },
+        {
+          "bytes": 1000008,
+          "samples": 7,
+          "medianMs": 60.2454,
+          "p95Ms": 63.4805,
+          "peakWorkingSetBytes": 29376512,
+          "privateBytes": 4575232
+        },
+        {
+          "bytes": 4000032,
+          "samples": 7,
+          "medianMs": 246.038,
+          "p95Ms": 251.15,
+          "peakWorkingSetBytes": 93437952,
+          "privateBytes": 8130560
+        }
+      ]
+    }
+  }
+}

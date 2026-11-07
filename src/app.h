@@ -14,6 +14,7 @@
 #include "editor.h"
 #include "plugin_manager.h"
 #include "debugger.h"
+#include "recovery.h"
 
 enum class BuildAction { Compile, BuildRun, Run, Debug };
 
@@ -141,6 +142,10 @@ struct App {
     bool  recoverPending = false;
     bool  recoverIgnore = false;
     std::string recoverContent;
+    recovery::Snapshot recoverSnapshot;
+    std::vector<unsigned char> recoverSelection;
+    void SaveRecovery();
+    void ApplyRecovery(bool restore);
 
     // ---- 初始化 ----
     bool Init();                    // 路径 / g++ / 设置 / 插件 (ImGui 上下文之前可调用)

@@ -3,12 +3,18 @@
 #include "lsp_support.h"
 #include <map>
 #include <set>
+#include "ui_helpers.h"
+#include <filesystem>
 namespace language {
 struct Document {std::string file,text;unsigned long long revision=0;};
 struct Pending {unsigned long long uid=0,revision=0;size_t offset=0;ULONGLONG time=0;};
 static PluginLanguageHooks hooks{};static bool ready=false,fallback=false;static unsigned long long version=0;
 static std::map<unsigned long long,Document> documents;
-static std::map<unsigned long long,Pending> completions;static Pending definition;
+static std::map<unsigned long long,Pending> completions;static Pending definition,renameRequest;
+struct RenameFile {std::string file,before,after;size_t count=0;};
+static std::vector<RenameFile> renameFiles;
+static bool renameWindow=false;static unsigned long long renameUid=0;
+static std::string newName,renameStatus;
 static Document* Sync(CodeEditor& editor) {
     if(!hooks.Document || editor.m_path.empty() || editor.m_text.size()>2*1024*1024)return nullptr;
     auto& doc=documents[editor.m_uid];auto file=lsp::FileKey(utils::WToU8(editor.m_path));
@@ -26,7 +32,7 @@ static void FallbackCompletion(const Pending& p) {
     auto* e=Match(p);if(!e||!e->m_compOpen||!e->m_languagePending)return;
     e->m_languagePending=false;fallback=true;e->GatherCandidates(e->m_compPrefix,e->m_compItems);fallback=false;e->m_compOpen=!e->m_compItems.empty();
 }
-void Reset(){bool owned=hooks.Document!=nullptr;ready=false;hooks={};documents.clear();completions.clear();definition={};for(auto& e:g_app.editors){e->m_languagePending=false;e->CloseCompletion();if(owned)e->m_diags.clear();}if(owned)g_app.MarkDiag();}
+void Reset(){bool owned=hooks.Document!=nullptr;ready=false;hooks={};renameRequest={};renameFiles.clear();documents.clear();completions.clear();definition={};for(auto& e:g_app.editors){e->m_languagePending=false;e->CloseCompletion();if(owned)e->m_diags.clear();}if(owned)g_app.MarkDiag();}
 void Register(const PluginLanguageHooks* value){Reset();if(value)hooks=*value;}
 bool Complete(CodeEditor& ed) {
     if(!Ready()||fallback||!g_app.settings.codeCompletion)return false;
@@ -43,6 +49,7 @@ void Tick() {
     for(auto& ed:g_app.editors){total+=ed->m_text.size();if(live.size()<32 && total<=16*1024*1024){live.insert(ed->m_uid);Sync(*ed);}}
     for(auto it=documents.begin();it!=documents.end();)if(!live.count(it->first)){if(hooks.Close)hooks.Close(it->second.file.c_str());it=documents.erase(it);}else ++it;
     for(auto it=completions.begin();it!=completions.end();)if(GetTickCount64()-it->second.time>10000){FallbackCompletion(it->second);it=completions.erase(it);}else ++it;
+    if(renameRequest.uid&&GetTickCount64()-renameRequest.time>10000){renameRequest={};renameStatus="重命名请求已超时，请重试";}
     if(definition.uid&&GetTickCount64()-definition.time>10000){auto p=definition;definition={};if(auto* e=Match(p))e->GotoDefinition(false);}
 }
 void Publish(const char* text,size_t length) {
@@ -56,6 +63,25 @@ void Publish(const char* text,size_t length) {
         }
         auto file=message.at("file").get<std::string>();auto rev=message.at("revision").get<unsigned long long>();
         CodeEditor* ed=nullptr;for(auto& e:g_app.editors)if(lsp::FileKey(utils::WToU8(e->m_path))==lsp::FileKey(file)&&Current(*e,rev)){ed=e.get();break;}if(!ed)return;
+        if(kind=="rename") {
+            if(!renameRequest.uid||Match(renameRequest)!=ed||message.at("offset").get<size_t>()!=renameRequest.offset)return;
+            renameRequest={};renameFiles.clear();
+            if(message.value("failed",false)){renameStatus="clangd 拒绝或无法完成重命名";return;}
+            std::map<std::string,std::vector<nlohmann::json>> groups;
+            for(auto& edit:message.at("edits"))groups[lsp::FileKey(edit.at("file").get<std::string>())].push_back(edit);
+            for(auto& group:groups){
+                RenameFile file;file.file=group.first;bool open=false;
+                for(auto& editor:g_app.editors)if(lsp::FileKey(utils::WToU8(editor->m_path))==file.file){file.before=editor->m_text;open=true;break;}
+                if(!open&&!utils::ReadFileU8(utils::U8ToW(file.file),file.before))throw std::runtime_error("Rename file unreadable");
+                file.after=file.before;std::vector<std::tuple<size_t,size_t,std::string>> edits;
+                for(auto& edit:group.second){auto range=edit.at("range");size_t a=lsp::Offset(file.before,range.at("start")),b=lsp::Offset(file.before,range.at("end"));if(a>b)throw std::runtime_error("Bad rename range");edits.push_back({a,b,edit.at("text")});}
+                std::sort(edits.begin(),edits.end());size_t last=0;for(auto& edit:edits){if(std::get<0>(edit)<last)throw std::runtime_error("Overlapping rename edits");last=std::get<1>(edit);}
+                for(auto it=edits.rbegin();it!=edits.rend();++it)file.after.replace(std::get<0>(*it),std::get<1>(*it)-std::get<0>(*it),std::get<2>(*it));
+                file.count=edits.size();renameFiles.push_back(std::move(file));
+            }
+            renameStatus=renameFiles.empty()?"未返回可应用的符号修改":"请查看全部文件的预览，应用后各标签保持未保存";
+            return;
+        }
         if(kind=="completion") {
             auto it=completions.find(ed->m_uid);if(it==completions.end()||it->second.offset!=message.at("offset").get<size_t>()||!Match(it->second))return;
             auto pending=it->second;completions.erase(it);
@@ -81,6 +107,32 @@ void Publish(const char* text,size_t length) {
             for(auto& open:g_app.editors)if(lsp::FileKey(utils::WToU8(open->m_path))==lsp::FileKey(utils::WToU8(target))){target=open->m_path;break;}
             g_app.OpenAtFile(utils::WToU8(target),row+1);if(auto* opened=g_app.ActiveEditor()){opened->m_cursor=lsp::Offset(opened->m_text,message.at("position"));opened->m_selAnchor=opened->m_cursor;opened->m_cursorMoved=true;}
         }
-    }catch(...) {/* Malformed/stale responses cannot mutate the editor. */}
+    }catch(...) {renameFiles.clear();renameStatus="服务返回内容无效，已丢弃";}
 }
+void BeginRename(CodeEditor& ed){renameWindow=true;renameUid=ed.m_uid;renameFiles.clear();renameRequest={};newName=ed.IdentAt(ed.m_cursor);renameStatus=Ready()?"输入新名称后请求语义修改预览":"需要安装并启用 clangd 插件";}
+void RequestRename(CodeEditor& ed,const std::string& name){
+ bool valid=!name.empty()&&(std::isalpha((unsigned char)name[0])||name[0]=='_');for(unsigned char c:name)valid&=std::isalnum(c)||c=='_';
+ if(!valid){renameStatus="请输入有效的 C++ 标识符（ASCII）";return;}
+ if(!Ready()){renameStatus="clangd 不可用";return;}
+ if(auto* doc=Sync(ed)){renameFiles.clear();renameRequest={ed.m_uid,doc->revision,ed.m_cursor,GetTickCount64()};hooks.Request(("rename:"+name).c_str(),doc->file.c_str(),doc->revision,ed.m_cursor);renameStatus="正在查询 clangd…";}
+}
+bool ApplyRename(){
+ if(renameFiles.empty())return false;
+ bool valid=true;for(auto& file:renameFiles){std::string current;bool open=false;for(auto& ed:g_app.editors)if(lsp::FileKey(utils::WToU8(ed->m_path))==file.file){current=ed->m_text;open=true;break;}if(!open&&!utils::ReadFileU8(utils::U8ToW(file.file),current))valid=false;if(current!=file.before)valid=false;}
+ if(!valid){renameStatus="文件在预览后发生变化，请重新请求";renameFiles.clear();return false;}
+ for(auto& file:renameFiles){CodeEditor* ed=nullptr;for(auto& editor:g_app.editors)if(lsp::FileKey(utils::WToU8(editor->m_path))==file.file)ed=editor.get();if(!ed){g_app.NewFile(utils::U8ToW(file.file));ed=g_app.ActiveEditor();}ed->m_carets.clear();ed->PushUndo(0,ed->m_text,file.after);ed->m_text=file.after;ed->InvalidateAll();ed->RebuildLines();ed->ClampCursor();ed->m_dirty=true;}g_app.MarkDiag();renameFiles.clear();renameStatus="修改已放入标签；请检查后保存。各文件可分别撤销。";return true;
+}
+void DrawRename(){
+ if(!renameWindow)return;ImGui::SetNextWindowSize(ImVec2(760,560),ImGuiCond_FirstUseEver);
+ if(ImGui::Begin("符号重命名",&renameWindow)){
+  ImGui::TextWrapped("%s",renameStatus.c_str());ui::InputTextStd("新名称",newName);
+  if(ImGui::Button("请求预览")){CodeEditor* ed=nullptr;for(auto& editor:g_app.editors)if(editor->m_uid==renameUid)ed=editor.get();if(ed)RequestRename(*ed,newName);else renameStatus="文档已关闭";}
+  if(!renameFiles.empty()&&ImGui::Button("应用全部预览到编辑标签"))ApplyRename();
+  ImGui::BeginChild("##rename_preview",ImVec2(0,0),ImGuiChildFlags_Borders);
+  for(auto& file:renameFiles)if(ImGui::TreeNode(file.file.c_str(),"%s（%zu 处）",file.file.c_str(),file.count)){ImGui::TextUnformatted("修改后内容");ImGui::TextUnformatted(file.after.c_str());ImGui::TreePop();}
+  ImGui::EndChild();
+ }
+ ImGui::End();
+}
+
 }

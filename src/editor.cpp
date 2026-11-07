@@ -70,6 +70,7 @@ static bool CompilerAvail() { return SymbolIndex::I().HasIncludeDirs(); }
 //  基础
 // ===================================================================
 void CodeEditor::SetText(const std::string& t) {
+    m_carets.clear();
     m_text = t;
     m_savedBaseline = t;
     m_cursor = 0;
@@ -379,6 +380,7 @@ void CodeEditor::DeleteSelection() {
 }
 
 void CodeEditor::InsertText(const std::string& s) {
+    if(!m_carets.empty()){MultiReplace(s);return;}
     if (s.empty()) return;
     if (m_selActive && SelBegin() != SelEnd()) {
         // 选区被输入替换: 删除+插入合并为单步撤销 (否则要按两次 Ctrl+Z)
@@ -519,6 +521,7 @@ void CodeEditor::DoAutoBracket(unsigned int c) {
 }
 
 void CodeEditor::Undo() {
+    m_carets.clear();
     if (m_undo.empty()) return;
     UndoOp op = m_undo.back();
     m_undo.pop_back();
@@ -540,6 +543,7 @@ void CodeEditor::Undo() {
 }
 
 void CodeEditor::Redo() {
+    m_carets.clear();
     if (m_redo.empty()) return;
     InvalidateFolds();   // 与编辑一致: 折叠锚点/范围已不可靠, 全部展开
     UndoOp op = m_redo.back();
@@ -647,6 +651,7 @@ void CodeEditor::PageDown(bool sel) {
 }
 
 void CodeEditor::SelectAll() {
+    m_carets.clear();
     m_selAnchor = 0;
     m_cursor = m_text.size();
     m_selActive = true;
@@ -2886,6 +2891,13 @@ void CodeEditor::Draw() {
         ImGui::SetWindowFocus();
         m_wordSelecting = false;
         bool inGutter = io.MousePos.x < rect.Min.x + gutter;
+        if(!inGutter && io.KeyAlt) {
+            float x=io.MousePos.x-rect.Min.x-gutter+m_scrollX,y=io.MousePos.y-rect.Min.y+m_scrollY;
+            if(io.KeyShift){m_columnSelecting=true;m_columnX=x;m_columnY=y;ColumnSelect(x,y,x,y);}
+            else AddCaret(HitTest(x,y));
+            m_mouseSelecting=false;
+        } else {m_carets.clear();
+
         if (inGutter) {
             int row = (int)((io.MousePos.y - rect.Min.y + m_scrollY) / lineH);
             int line = LineOfVisualRow(row);
@@ -2930,6 +2942,7 @@ void CodeEditor::Draw() {
             }
         }
     }
+        }
     // Drag outside the viewport to scroll continuously, without jumping the caret.
     if (m_mouseSelecting && active && io.MouseDown[0]) {
         auto speed = [&](float distance) { return std::min(lineH * 40, distance * 10) * io.DeltaTime; };
@@ -2967,10 +2980,12 @@ void CodeEditor::Draw() {
         m_selActive = (m_cursor != m_selAnchor);
         m_cursorMoved = false;
     }
+    if(m_columnSelecting&&io.MouseDown[0])ColumnSelect(m_columnX,m_columnY,io.MousePos.x-rect.Min.x-gutter+m_scrollX,io.MousePos.y-rect.Min.y+m_scrollY);
+    if(!io.MouseDown[0])m_columnSelecting=false;
     if (!io.MouseDown[0]) { m_mouseSelecting = false; m_lineSelecting = false; m_wordSelecting = false; }
 
     // 双击选词
-    if (hovered && io.MouseDoubleClicked[0]) {
+    if (hovered && !io.KeyAlt && io.MouseDoubleClicked[0]) {
         float cx = io.MousePos.x - (rect.Min.x + gutter) + m_scrollX;
         float cy = io.MousePos.y - rect.Min.y + m_scrollY;
         size_t p = HitTest(cx, cy);
@@ -2988,6 +3003,7 @@ void CodeEditor::Draw() {
 
     // 右键菜单
     if (hovered && io.MouseClicked[1]) {
+        m_carets.clear();
         float cx = io.MousePos.x - (rect.Min.x + gutter) + m_scrollX;
         float cy = io.MousePos.y - rect.Min.y + m_scrollY;
         m_cursor = HitTest(cx, cy);
@@ -3012,10 +3028,10 @@ void CodeEditor::Draw() {
     // NavEnableKeyboard 已关闭, 所以 WantCaptureKeyboard 只在 InputText 聚焦时为 true,
     // 正常编辑时光标/方向键/Enter/Tab/Backspace/字符/Ctrl+Space 全部由编辑器处理。
     bool windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-    if (windowFocused && !io.WantCaptureKeyboard) {
+    if (windowFocused && !io.WantCaptureKeyboard && !MultiKeyboard()) {
         // 补全弹窗导航 (编辑键在下方始终可用, 不再被弹窗分支独占)
         bool keyUsed = false;
-        if (m_compOpen) {
+        if (m_compOpen && !m_compItems.empty()) {
             if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
                 m_compIdx = (m_compIdx - 1 + (int)m_compItems.size()) % (int)m_compItems.size();
                 m_compTouched = true; keyUsed = true;
@@ -3325,6 +3341,10 @@ void CodeEditor::Draw() {
             float x1=selB>le && le<m_text.size() ? textRight : textLeft+CharX(bb)-m_scrollX;
             if(x1>x0) dl->AddRectFilled(ImVec2(x0,y),ImVec2(x1,y+lineH),g_app.colors.selection);
         }
+        for(const auto& caret:m_carets){
+            size_t a=std::min(caret.anchor,caret.cursor),end=std::max(caret.anchor,caret.cursor);
+            if(end>ls && a<le){size_t begin=std::max(a,ls),finish=std::min(end,le);if(begin<finish)dl->AddRectFilled(ImVec2(textLeft+CharX(begin)-m_scrollX,y),ImVec2(textLeft+CharX(finish)-m_scrollX,y+lineH),g_app.colors.selection);}
+        }
         // 查找高亮
         if (findScan < m_findMatches.size()) {
             const auto& fm = m_findMatches;
@@ -3413,6 +3433,12 @@ void CodeEditor::Draw() {
         dl->PopClipRect();
     }
 
+    // Additional carets and rectangular selections share the editor clip.
+    dl->PushClipRect(ImVec2(rect.Min.x+gutter,rect.Min.y),rect.Max,true);
+    for(const auto& caret:m_carets) {
+        int row=VisibleRowOfLine(int(LineOf(caret.cursor)));if(row>=0){float x=rect.Min.x+gutter+CharX(caret.cursor)-m_scrollX,y=rect.Min.y+row*lineH-m_scrollY;dl->AddRectFilled(ImVec2(x,y+2),ImVec2(x+2,y+lineH-2),g_app.colors.caret);}
+    }
+    dl->PopClipRect();
     // 光标
     if (windowFocused) {
         float blink = (float)fmod(ImGui::GetTime() * 2.2, 1.0);

@@ -1,3 +1,5 @@
+#include "language_host.h"
+#include "contest.h"
 #include "toolbar_icons.h"
 #include "version.h"
 // ============================================================
@@ -37,6 +39,7 @@ static void DrawAboutWindow();
 static void DrawSearchWindow();
 static void DrawFileTreeWindow();
 static void DrawRecoverModal();
+static bool showContest=false;
 static void DrawCloseConfirmModal();
 static void HandleGlobalShortcuts();
 static void DrawWorkspaceToolbar();
@@ -158,6 +161,8 @@ int main() {
         g_app.plugins.CallFrames();
 
         DrawRecoverModal();
+        language::DrawRename();
+        if(showContest)contest::Draw(&showContest);
         DrawCloseConfirmModal();
 
         HandleGlobalShortcuts();
@@ -396,6 +401,7 @@ static void DrawMainMenuBar() {
             ed->m_findOpen = true;
             ed->RecomputeMatches();
         }
+        if(ImGui::MenuItem("符号重命名（clangd）",nullptr,false,ed!=nullptr))language::BeginRename(*ed);
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("运行")) {
@@ -405,6 +411,7 @@ static void DrawMainMenuBar() {
         if (ImGui::MenuItem("停止编译或运行", nullptr, false, g_app.procBusy.load())) g_app.killRequested.store(true);
         ImGui::EndMenu();
     }
+    if(ImGui::BeginMenu("测试")){if(ImGui::MenuItem("样例、Subtask 与对拍"))showContest=true;ImGui::EndMenu();}
     if(ImGui::BeginMenu("调试")) {
         auto* ed=g_app.ActiveEditor();
         auto debug=g_app.debugger.Snapshot();
@@ -1511,23 +1518,16 @@ static void DrawRecoverModal() {
         g_app.recoverPending = false;
     }
     if (ImGui::BeginPopupModal("恢复", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("发现自动保存文件, 恢复?");
-        if (ImGui::Button("恢复", ImVec2(100, 0))) {
-            if (!g_app.recoverContent.empty()) {
-                g_app.NewFile();
-                g_app.ActiveEditor()->SetText(g_app.recoverContent);
-                g_app.ActiveEditor()->RebuildLines();
-            }
-            ImGui::CloseCurrentPopup();
-            ImGuiWindow* w = ImGui::FindWindowByName("编辑器");
-            if (w) ImGui::FocusWindow(w);   // 关闭后焦点还给编辑器, 可直接输入
+        ImGui::TextUnformatted("选择需要恢复的标签。恢复为副本，不会覆盖原文件。");
+        ImGui::BeginChild("##recovery_tabs",ImVec2(560,220),ImGuiChildFlags_Borders);
+        for(size_t i=0;i<g_app.recoverSnapshot.tabs.size();++i) {
+            const auto& tab=g_app.recoverSnapshot.tabs[i];bool chosen=g_app.recoverSelection[i]!=0;
+            ImGui::PushID(int(i));if(ImGui::Checkbox(tab.name.c_str(),&chosen))g_app.recoverSelection[i]=chosen;
+            if(!tab.path.empty())ImGui::TextDisabled("%s",tab.path.c_str());ImGui::PopID();
         }
-        ImGui::SameLine();
-        if (ImGui::Button("忽略", ImVec2(100, 0))) {
-            ImGui::CloseCurrentPopup();
-            ImGuiWindow* w = ImGui::FindWindowByName("编辑器");
-            if (w) ImGui::FocusWindow(w);
-        }
+        ImGui::EndChild();
+        if(ImGui::Button("恢复选中标签")){g_app.ApplyRecovery(true);ImGui::CloseCurrentPopup();}
+        ImGui::SameLine();if(ImGui::Button("忽略本次恢复")){g_app.ApplyRecovery(false);ImGui::CloseCurrentPopup();}
         ImGui::EndPopup();
     }
 }
