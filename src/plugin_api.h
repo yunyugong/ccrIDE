@@ -14,7 +14,7 @@
 //       -I<E:\cPP\imgui> plugin.cpp <imgui 核心源码> -o plugin.dll
 
 #include <stddef.h>
-#define CCRIDE_PLUGIN_API_VERSION 2
+#define CCRIDE_PLUGIN_API_VERSION 3
 
 typedef void (*PluginTextSink)(void* user, const char* text, size_t length);
 typedef struct PluginCompletionSource { const char* file; int line; const char* documentation; } PluginCompletionSource;
@@ -48,6 +48,19 @@ typedef struct PluginApi {
     void (*Deallocate)(void*,void*);
     void* allocatorUser;
 } PluginApi;
+
+// The V2 layout above is frozen. V3 is an append-only extension; callbacks run
+// only on the host UI thread. Plugins marshal worker results in OnFrame.
+typedef struct PluginLanguageHooks {
+    void (*Document)(const char* file,const char* text,size_t length,unsigned long long revision);
+    void (*Close)(const char* file);
+    void (*Request)(const char* kind,const char* file,unsigned long long revision,size_t byteOffset);
+} PluginLanguageHooks;
+typedef struct PluginApiV3 {
+    PluginApi base;
+    void (*RegisterLanguage)(const PluginLanguageHooks* hooks);
+    void (*PublishLanguage)(const char* json,size_t length);
+} PluginApiV3;
 
 // 插件元信息 (从 plugin.json 读取)
 // {

@@ -19,7 +19,7 @@ if($JsonDirectory) { $configure += "-DNLOHMANN_DIR=$JsonDirectory" }
 & $cmake @configure
 if($LASTEXITCODE -ne 0) { throw "CMake 配置失败，请查看缺少的依赖和 docs/building.md。" }
 if($Test) { & $cmake --build $BuildDirectory -j 4 }
-else { & $cmake --build $BuildDirectory --target MiniCPP ai_assistant_plugin completion_docs_plugin ccride_installer -j 4 }
+else { & $cmake --build $BuildDirectory --target MiniCPP ai_assistant_plugin completion_docs_plugin clangd_plugin ccride_installer -j 4 }
 if($LASTEXITCODE -ne 0) { throw "构建失败。" }
 if($Test) {
     & (Join-Path (Split-Path $cmake) "ctest.exe") --test-dir $BuildDirectory --output-on-failure

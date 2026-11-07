@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Source,[Parameter(Mandatory=$true)][string]$OutputDir,[string]$Version='0.3.3',[string]$CompilerPath='')
+param([Parameter(Mandatory=$true)][string]$Source,[Parameter(Mandatory=$true)][string]$OutputDir,[string]$Version='0.3.4',[string]$CompilerPath='')
 $ErrorActionPreference='Stop'
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $buildStamp=Get-Date -Format 'yyyyMMdd-HHmmss-fff'

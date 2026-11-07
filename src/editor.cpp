@@ -1,3 +1,4 @@
+#include "language_host.h"
 #include "line_changes.h"
 #include "editor.h"
 #include "app.h"
@@ -1473,7 +1474,8 @@ std::string CodeEditor::IdentAt(size_t pos) {
 // 跳转定义: 在所有打开文档中搜索 ident 的定义行
 //   匹配: class/struct/enum <ident>  |  <ident>::  |  <ident>( (函数定义)
 //   顺序: 当前文档优先, 其余标签按打开顺序
-bool CodeEditor::GotoDefinition() {
+bool CodeEditor::GotoDefinition(bool useLanguage) {
+    if(useLanguage && language::Definition(*this))return true;
     // -1) 光标位于 #include <...> / "..." 的文件名内: 打开该头文件 (而非把名字当类型解析)
     {
         size_t line = LineOf(m_cursor);
@@ -2133,6 +2135,8 @@ void CodeEditor::SetCompletionSources(CompItem& item,const std::string& src,size
 }
 
 void CodeEditor::GatherCandidates(const std::string& prefix, std::vector<CompItem>& out) {
+    m_languagePending=false;
+    if(language::Complete(*this)){out.clear();return;}
     if (!g_app.settings.codeCompletion) { out.clear(); return; }
     out.clear();
     g_app.plugins.BeginCompletion();
@@ -2456,7 +2460,7 @@ void CodeEditor::OpenCompletion() {
     m_compIdx = 0;
     m_compScroll = 0;
     m_compTouched = false;                     // 新弹窗: 尚未人工选定
-    m_compOpen = !m_compItems.empty();
+    m_compOpen = !m_compItems.empty() || m_languagePending;
 }
 
 void CodeEditor::UpdateCompletion() {
@@ -2476,13 +2480,25 @@ void CodeEditor::UpdateCompletion() {
     m_compItems.clear();
     GatherCandidates(m_compPrefix, m_compItems);
     if (m_compIdx >= (int)m_compItems.size()) m_compIdx = 0;
-    if (m_compItems.empty()) m_compOpen = false;
+    if (m_compItems.empty() && !m_languagePending) m_compOpen = false;
 }
 
 bool CodeEditor::AcceptCompletion() {
     if (!g_app.settings.codeCompletion) { CloseCompletion(); return false; }
     if (!m_compOpen || m_compItems.empty()) return false;
     CompItem it = m_compItems[std::max(0, m_compIdx)];
+    if(it.languageRevision) {
+        if(!language::Current(*this,it.languageRevision) || m_cursor!=it.languageOffset || it.replaceStart>it.replaceEnd || it.replaceEnd>m_text.size()) {CloseCompletion();return false;}
+        if(m_compPrefix.empty() && !m_compTouched){CloseCompletion();return false;}
+        if(!it.func && it.insertion==m_text.substr(it.replaceStart,it.replaceEnd-it.replaceStart)){CloseCompletion();return false;}
+        bool parentheses=it.func && it.insertion.find('(')==std::string::npos && (it.replaceEnd==m_text.size()||m_text[it.replaceEnd]!='(');
+        if(parentheses)it.insertion+="()";
+        PushUndo(it.replaceStart,m_text.substr(it.replaceStart,it.replaceEnd-it.replaceStart),it.insertion);
+        EraseRange(it.replaceStart,it.replaceEnd,false);
+        InsertAt(it.replaceStart,it.insertion,false);
+        m_cursor=it.replaceStart+it.insertion.size()-(parentheses?1:0);m_selAnchor=m_cursor;m_selActive=false;m_dirty=true;m_cursorMoved=true;CloseCompletion();return true;
+    }
+
     // 空前缀 (刚敲完 . / :: / " ) 且用户没按过方向键选定 -> 不抢 Tab/Enter (include 除外)
     {
         size_t hs = 0; bool hq = false;
@@ -2530,7 +2546,7 @@ bool CodeEditor::AcceptCompletion() {
     return true;
 }
 
-void CodeEditor::CloseCompletion() { m_compOpen = false; m_compItems.clear(); }
+void CodeEditor::CloseCompletion() { m_languagePending=false;m_compOpen = false; m_compItems.clear(); }
 
 // ===================================================================
 //  查找
@@ -3143,7 +3159,7 @@ void CodeEditor::Draw() {
                         GatherCandidates(m_compPrefix, m_compItems);
                         m_compIdx = 0;
                         m_compTouched = false;
-                        m_compOpen = !m_compItems.empty();
+                        m_compOpen = !m_compItems.empty() || m_languagePending;
                     }
                     // 参数签名提示: "(" 弹出, ")" 关闭
                     if (ch == '(') {
@@ -3503,7 +3519,8 @@ void CodeEditor::Draw() {
         const float rowH = ImGui::GetTextLineHeight() + 6.0f;
         const float maxH = std::max(1.0f, vp->WorkSize.y - 12.0f);
         const bool hasHint=m_compIdx>=0 && m_compIdx<total && !m_compItems[m_compIdx].hint.empty();
-        const float detailsH = g_app.plugins.HasCompletionProvider() ? std::min(260.0f, maxH * 0.44f) : hasHint ? std::min(84.0f,maxH*0.18f) : 0.0f;
+        const bool hasDocumentation=g_app.plugins.HasCompletionProvider() && !m_compItems[std::clamp(m_compIdx,0,total-1)].languageRevision;
+        const float detailsH = hasDocumentation ? std::min(260.0f, maxH * 0.44f) : hasHint ? std::min(84.0f,maxH*0.18f) : 0.0f;
         const int visible = std::max(1, std::min(9, (int)((maxH - detailsH - 85.0f) / rowH)));
         if (m_compIdx < 0) m_compIdx = 0;
         if (m_compIdx >= total) m_compIdx = total - 1;
@@ -3599,7 +3616,7 @@ void CodeEditor::Draw() {
             if (detailsH>0 && m_compOpen && m_compIdx>=0 && m_compIdx<(int)m_compItems.size()) {
                 ImGui::Separator();
                 ImGui::BeginChild("##completion_details",ImVec2(0,detailsH),ImGuiChildFlags_None,ImGuiWindowFlags_NoFocusOnAppearing);
-                if(g_app.plugins.HasCompletionProvider()) g_app.plugins.DrawCompletionDetails(*this);
+                if(hasDocumentation) g_app.plugins.DrawCompletionDetails(*this);
                 else { ImGui::PushTextWrapPos(0);ImGui::TextUnformatted(m_compItems[m_compIdx].hint.c_str());ImGui::PopTextWrapPos(); }
                 ImGui::EndChild();
             }

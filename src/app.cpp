@@ -1,3 +1,4 @@
+#include "language_host.h"
 #include "app.h"
 #include "ui_helpers.h"
 #include <thread>
@@ -633,6 +634,7 @@ void App::MarkDiag() {
 }
 
 void App::DiagTick(float dt) {
+    if(language::Handles(ActiveEditor()))return;
     if (!settings.autoCheck) { diagPending = false; return; }
     if (!diagPending || diagBusy.load()) return;
     diagTimer += dt;
@@ -677,7 +679,7 @@ void App::PumpDiagResults() {
     bool automatic = true;
     { std::lock_guard<std::mutex> lk(diagMutex); d.swap(diagResults); rev = diagDoneRev; automatic = diagAutomatic; diagDoneRev = 0; }
     if (rev == 0) return;
-    if (automatic && !settings.autoCheck) return;
+    if (automatic && (!settings.autoCheck || language::Handles(ActiveEditor()))) return;
     if (rev != editRev) {
         // 检查期间又编辑了 -> 丢弃本次结果, 但必须重新排一次检查, 否则结果会永久过期
         diagPending = true;

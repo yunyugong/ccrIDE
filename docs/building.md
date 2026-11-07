@@ -19,7 +19,7 @@
 把 CMake 和编译工具目录加入当前终端 PATH，在源码根目录执行：
 
     cmake -S . -B build/cmake -G "MinGW Makefiles" -DBUILD_TESTING=OFF
-    cmake --build build/cmake --target MiniCPP ai_assistant_plugin completion_docs_plugin ccride_installer -j 4
+    cmake --build build/cmake --target MiniCPP ai_assistant_plugin completion_docs_plugin clangd_plugin ccride_installer -j 4
 
 CMAKE_CXX_COMPILER 可指定 g++.exe。切换编译器使用新构建目录。原有显式目录参数继续有效，切换依赖版本也建议使用新目录。
 
@@ -38,3 +38,9 @@ Python 由 find_package(Python3 COMPONENTS Interpreter) 查找，可通过 Pytho
 离线打包脚本要求显式提供 --compiler；--dependencies 默认使用源码目录的 dependencies。离线包需要含许可文件的完整依赖源码及完整 MinGW 工具链，仅安装系统开发包不一定满足分发条件。安装外壳必须附加有效载荷后才可用于安装。
 
 参考：[FindZLIB](https://cmake.org/cmake/help/latest/module/FindZLIB.html)、[FindPython3](https://cmake.org/cmake/help/latest/module/FindPython3.html)。
+
+## 可选 clangd 离线包
+
+clangd_plugin 构建语言服务适配 DLL。默认不下载 clangd，用户可在插件设置中指定已安装的服务。打包完整离线插件时，配置 CCRIDE_CLANGD_BUNDLE 指向官方发行版根目录（含 bin/clangd.exe、lib/ 和 LICENSE.TXT），重新构建 clangd_plugin，再运行 package-plugins.py。整个发行版会复制到插件 toolchain/，包含资源头文件与许可证。
+
+本次离线包使用官方 clangd 23.1.0，源归档 SHA256：23412a240756a162e7b98a282f36aa2a23a88db5ce16a0cbc4fef7253768c810。测试目标 clangd_tests 自动查找服务，也可设置 CCRIDE_TEST_CLANGD；未找到服务时 CTest 显示跳过，不作为通过。

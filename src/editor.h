@@ -69,8 +69,12 @@ public:
         std::string doc;        // 声明附近的注释 (补全弹窗右侧/下方展示, 类似 VSCode)
         std::vector<CompSource> sources;
         int sourceIndex = 0;
+        unsigned long long languageRevision=0;
+        size_t languageOffset=0,replaceStart=0,replaceEnd=0;
+        std::string insertion;
     };
     bool m_compOpen = false;
+    bool m_languagePending = false;
     std::vector<CompItem> m_compItems;
     std::string m_compPrefix;
     size_t m_compStart = 0;
@@ -253,7 +257,7 @@ public:
     void   GotoLine(int line);                 // 跳转到行 (1-based, 供问题列表点击)
     int    FindMatchingBracket(size_t pos) const;  // 括号匹配: 返回匹配偏移 / -1
     std::string IdentAt(size_t pos);               // 取 pos 处(或前)的标识符
-    bool   GotoDefinition();                       // 跳转到光标下标识符的定义
+    bool   GotoDefinition(bool useLanguage = true); // 跳转到光标下标识符的定义
     void   ToggleBookmark();                       // 当前行加/解书签
     void   NextBookmark();                         // 跳到下一个书签 (循环)
     void   PrevBookmark();                         // 跳到上一个书签 (循环)

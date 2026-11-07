@@ -3,6 +3,7 @@
 #include "utils.h"
 #include "ui_helpers.h"
 #include "zip_archive.h"
+#include "language_host.h"
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <nlohmann/json.hpp>
@@ -67,7 +68,8 @@ static void api_dock(const char* title,int location) {
     }
     ImGui::SetNextWindowDockID(g_docks[location],ImGuiCond_FirstUseEver);
 }
-static PluginApi g_pluginApi = { api_get_data_dir,api_log,api_get_setting,CCRIDE_PLUGIN_API_VERSION,sizeof(PluginApi),api_register_command,api_register_completion,api_selection,api_insert,api_dock };
+static PluginApiV3 g_apiV3 = {{ api_get_data_dir,api_log,api_get_setting,CCRIDE_PLUGIN_API_VERSION,sizeof(PluginApiV3),api_register_command,api_register_completion,api_selection,api_insert,api_dock },language::Register,language::Publish};
+static PluginApi& g_pluginApi=g_apiV3.base;
 
 bool PluginManager::HasCompletionProvider() const { return g_completion.Describe && g_completion.Draw; }
 void PluginManager::BeginCompletion() { if(g_completion.Begin) g_completion.Begin(); }
@@ -178,7 +180,7 @@ void PluginManager::ScanAndLoad() {
                 HMODULE hmod = LoadLibraryW(pi.dllPath.c_str());
                 if (hmod) {
                     pi.hmod    = hmod;
-                    pi.onLoad  = (Plugin_OnLoadFn)GetProcAddress(hmod, pi.apiVersion>=2 ? "Plugin_OnLoadV2" : PLUGIN_LOAD_NAME);
+                    pi.onLoad  = (Plugin_OnLoadFn)GetProcAddress(hmod, pi.apiVersion>=3 ? "Plugin_OnLoadV3" : (pi.apiVersion>=2 ? "Plugin_OnLoadV2" : PLUGIN_LOAD_NAME));
                     pi.onFrame = (Plugin_OnFrameFn)GetProcAddress(hmod, PLUGIN_FRAME_NAME);
                     pi.onUnload= (Plugin_OnUnloadFn)GetProcAddress(hmod, PLUGIN_UNLOAD_NAME);
                     if (pi.onLoad) {
@@ -204,6 +206,7 @@ void PluginManager::ScanAndLoad() {
 }
 
 void PluginManager::UnloadAll() {
+    language::Reset();
     g_commands.clear(); g_completion={};
     for(auto& editor:g_app.editors) editor->CloseCompletion();
     for (auto& p : plugins) {
@@ -219,6 +222,7 @@ void PluginManager::ReloadAll() {
 }
 
 void PluginManager::CallFrames() {
+    language::Tick();
     for (auto& p : plugins) {
         if (!p.loaded || !p.onFrame) continue;
         p.onFrame();

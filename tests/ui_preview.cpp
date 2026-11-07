@@ -7,6 +7,8 @@
 #include <fstream>
 #include "plugin_test_support.h"
 #include <cmath>
+#include "language_host.h"
+#include <nlohmann/json.hpp>
 
 static void SaveFrame(const std::filesystem::path& path, int width, int height) {
     int stride = (width * 3 + 3) & ~3;
@@ -28,7 +30,7 @@ static void SaveFrame(const std::filesystem::path& path, int width, int height) 
 
 int main(int argc, char** argv) {
     CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
-    if (argc != 2 || !glfwInit()) return 2;
+    if ((argc != 2 && argc != 3) || !glfwInit()) return 2;
     std::filesystem::path output(argv[1]);
     std::filesystem::create_directories(output);
     int failures = 0;
@@ -362,6 +364,31 @@ int main(int argc, char** argv) {
                 }
             }
             g_app.compilerPickerOpen=false;g_app.compilerCandidates.clear();
+        }
+        if(scenario==0 && argc==3) {
+            namespace fs=std::filesystem;
+            fs::create_directories(testPluginRoot/"clangd");
+            for(const char* name:{"plugin.json","clangd.dll"})fs::copy_file(fs::path(CCRIDE_TEST_PLUGIN_ROOT)/"clangd"/name,testPluginRoot/"clangd"/name,fs::copy_options::overwrite_existing);
+            fs::create_directories(fs::path(g_app.dataDir)/"plugins/clangd");
+            std::ofstream(fs::path(g_app.dataDir)/"plugins/clangd/settings.json")<<nlohmann::json{{"executable",argv[2]}}.dump();
+            g_app.compilerCandidates.clear();g_app.compilerPickerOpen=false;
+            auto* ed=g_app.editors.front().get();g_app.active=0;
+            ed->SetPath((testPluginRoot/"nested-template.cpp").wstring());
+            ed->SetText("#include <vector>\n\nusing Matrix = std::vector<std::vector<int>>;\n\nint main() {\n    Matrix matrix;\n    matrix.\n}\n");
+            ed->RebuildLines();ed->m_cursor=ed->m_text.find("matrix.")+7;ed->m_selAnchor=ed->m_cursor;ed->m_cursorMoved=true;
+            utils::WriteFileU8(ed->m_path,ed->m_text);g_app.plugins.ReloadAll();
+            bool asked=false,found=false;int readyFrames=0;auto start=GetTickCount64();
+            while(GetTickCount64()-start<15000) {
+                ImGui_ImplOpenGL3_NewFrame();ImGui_ImplGlfw_NewFrame();io.AddFocusEvent(true);io.AddMousePosEvent(-100,-100);ImGui::NewFrame();
+                DrawMainMenuBar();DrawWorkspaceToolbar();DrawStatusBar();DrawActivityBar();DrawWorkspaceDock();
+                DrawFileTreeWindow();g_app.console.DrawWindow(&g_app.showConsole);DrawEditorWindow();g_app.plugins.CallFrames();
+                if(language::Ready()&&!asked){ed->OpenCompletion();asked=true;}
+                for(size_t i=0;i<ed->m_compItems.size();++i)if(ed->m_compItems[i].languageRevision&&ed->m_compItems[i].insertion=="push_back"){ed->m_compIdx=int(i);found=true;}
+                ImGui::Render();glViewport(0,0,width,height);glClear(GL_COLOR_BUFFER_BIT);ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+                if(found&&++readyFrames==4){SaveFrame(output/"clangd-completion.bmp",width,height);break;}
+                glfwSwapBuffers(window);Sleep(15);
+            }
+            if(!found){++failures;printf("FAIL real clangd completion preview\n");}
         }
         if(scenario==0) UnloadDocumentationTestPlugin();
         g_shellIcons.Clear();

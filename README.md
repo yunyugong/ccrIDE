@@ -1,6 +1,6 @@
 # ccrIDE
 
-轻量 C++ IDE，使用 Dear ImGui、GLFW 和 OpenGL。当前版本：**0.3.3**。
+轻量 C++ IDE，使用 Dear ImGui、GLFW 和 OpenGL。当前版本：**0.3.4**。
 
 定位为轻量、单文件优先的开发环境。高级调试、测试框架集成、大型项目管理仍不完整；重型模板元编程可能超出轻量补全模型的能力。详见 [架构核对与验收边界](docs/architecture-review.md)。
 
@@ -10,7 +10,7 @@
 
 ## 安装与使用
 
-Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查看进度和取消安装。便携 ZIP 提供相同的程序文件，解压后运行 `ccrIDE-v0.3.3.exe`。
+Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查看进度和取消安装。便携 ZIP 提供相同的程序文件，解压后运行 `ccrIDE-v0.3.4.exe`。
 
 当前 GitHub 仓库提供源码，安装程序和插件 ZIP 尚未上传到 Releases。
 
@@ -27,7 +27,7 @@ Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查
 | 功能 | 说明 |
 |---|---|
 | 编辑 | 多文件标签、撤销重做、自动括号、智能缩进、查找替换、行号和折叠 |
-| 补全 | 作用域感知、头文件解析、命名空间与对象成员、函数签名、模糊匹配 |
+| 补全 | 内置轻量模型；可选 clangd 插件提供编译器语义补全、诊断和定义跳转 |
 | 导航 | include 跳转、类型与符号定义跳转 |
 | 编译运行 | 后台编译、交互终端、停止运行、可配置参数及资源限制 |
 | 调试 | GDB 断点、步入、步过、暂停、局部变量、调用栈和表达式求值 |
@@ -46,9 +46,12 @@ AI 助手与补全注释已从主程序移出，分别安装、停用或卸载�
 | 插件包 | 功能 |
 |---|---|
 | `ai-assistant-v1.1.0.zip` | OpenAI 兼容接口、流式或非流式对话、多轮历史、附带选中代码和插入回复 |
-| `completion-docs-v1.0.0.zip` | 补全注释全文、声明文件与行号、多个头文件来源切换、可点击网址 |
+| `completion-docs-v1.0.0.zip` | 轻量补全的注释全文、声明文件与行号、多个头文件来源切换、可点击网址 |
+| `clangd-v1.0.0.zip` | 独立 clangd 服务、嵌套模板语义补全、实时诊断、定义跳转；离线包附带 clangd 23.1.0 |
 
-安装：在“插件 → 安装本地插件”中选择 ZIP，无需手动解压。两个插件需要 ccrIDE 0.3.0 或以上，使用插件 API v2。
+安装：在“插件 → 安装本地插件”中选择 ZIP，无需手动解压。AI 和注释插件需要 ccrIDE 0.3.0 或以上，使用插件 API v2。clangd 插件需要 ccrIDE 0.3.4 或以上，使用兼容扩展 API v3。
+
+clangd 安装后自动启用；在“插件 → clangd 设置”选择服务路径、编译数据库目录、无数据库时的编译参数和内存上限。优先使用 compile_commands.json；服务不可用时回退轻量补全。完整配置、验证范围及限制见 [clangd 使用说明](docs/clangd.md)。
 
 AI 连接通过“插件 → AI 助手设置”配置，设置独立保存至 `data/plugins/ai-assistant/settings.json`。首次安装可迁移本机旧配置，发布包不携带密钥。使用前需要自行准备可访问的兼容服务。
 
@@ -90,7 +93,7 @@ AI 连接通过“插件 → AI 助手设置”配置，设置独立保存至 `d
 详细目录布局、参数和离线打包要求见 [构建说明](docs/building.md)。配置阶段不会自动联网下载依赖。
 
     cmake -S . -B build/cmake -G "MinGW Makefiles" -DBUILD_TESTING=OFF
-    cmake --build build/cmake --target MiniCPP ai_assistant_plugin completion_docs_plugin ccride_installer -j 4
+    cmake --build build/cmake --target MiniCPP ai_assistant_plugin completion_docs_plugin clangd_plugin ccride_installer -j 4
 
 主程序发布到 build/releases，插件清单默认保存在可执行文件旁的 plugins/。构建时间用于“关于”和元数据，版本化 EXE 保留旧产物。build.ps1 委托同一套 CMake，不再维护固定路径。
 
@@ -114,13 +117,13 @@ cmake --build build/cmake --target ui_preview -j 4
 build/cmake/ui_preview.exe build/ui-previews
 ```
 
-v0.3.3 增加进程外服务故障检查；此前已完成六组自动检查、跨盘插件安装、中文目录安装，以及安装后的编译、运行与基础 GDB 调试检查。
+v0.3.4 增加 clangd 协议、真实服务与宿主衔接检查；八组自动检查通过，并单独检查中文路径下的实际插件安装、成员补全、诊断、定义跳转、服务异常退出、重载和卸载。
 
 ## 插件运行边界
 
 当前 DLL 插件在 IDE 主进程内执行，共享内存与 ImGui 上下文。插件的崩溃、内存错误和死循环仍可能影响 IDE，只应加载可信插件。AI 1.1.0 已将 HTTP、SSE 和接口响应解析迁到独立的 ai-service.exe；带有取消、超时、消息和资源上限，并完成服务故障注入检查。这不等于所有 DLL 插件已隔离，也不构成权限沙箱。详见 [进程外服务第一阶段](docs/process-services.md)。
 
-核心保留轻量补全，工程语义计划由独立 clangd 插件承接；接入目前未完成。专业调试、测试框架及大型工程能力不能由现有基础接口推断为已经具备。
+核心保留轻量补全；可选 clangd 插件已接入文档同步、补全、诊断、定义跳转和编译数据库。专业调试、测试框架及大型工程能力不能由现有基础接口推断为已经具备。
 
 ## 插件开发
 
@@ -134,13 +137,16 @@ v0.3.3 增加进程外服务故障检查；此前已完成六组自动检查、�
 }
 ```
 
+API v3 在冻结的 API v2 基础结构之后追加语言服务回调，导出 Plugin_OnLoadV3；现有 v1/v2 插件保持兼容。语言服务在工作线程处理协议，每帧把结果提交宿主。
+
 API v2 导出 `Plugin_OnLoadV2`、`Plugin_OnFrame` 和 `Plugin_OnUnload`。加载时校验接口版本与结构大小，并设置宿主传入的 ImGui 分配器和上下文；具体实现见两个独立插件目录。旧 API v1 仍使用 `Plugin_OnLoad`。
 
 插件的 ImGui Push/Pop 必须配对，窗口首次出现时应避免抢走编辑焦点。内置时钟与 Hello 使用专用入口注册，不能直接作为外部 DLL 示例。
 
 ## 已知边界
 
-- 补全使用轻量 C++ 语义模型，不是完整编译器；复杂模板、宏和条件编译可能导致缺失或推断不准。
+- 内置补全使用轻量 C++ 模型；复杂模板可选择 clangd，但正确性仍依赖实际编译参数、头文件和工具链配置。
+- clangd 首版未实现引用查找、语义重命名、格式化、代码动作及注释详情解析；未命名文件仍用轻量补全。
 - 补全文档的注释关联使用启发式；不能可靠关联时显示无注释。完整类型或注释依赖可解析的头文件。
 - 调试为基础单目标 GDB/MI 会话，尚未实现线程管理、寄存器和反汇编。
 - 调试输入目前使用设置中指定的文件；普通运行支持交互输入。修改源码后需重启调试。

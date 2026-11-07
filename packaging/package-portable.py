@@ -13,7 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--stage', required=True)
 parser.add_argument('--output', required=True)
 parser.add_argument('--settings', required=True)
-parser.add_argument('--version', default='0.3.3')
+parser.add_argument('--version', default='0.3.4')
 parser.add_argument('--exe')
 parser.add_argument('--compiler', required=True, help='MinGW-w64 root directory containing bin/g++.exe')
 parser.add_argument('--dependencies', default=str(Path(__file__).resolve().parents[1]/'dependencies'))
@@ -76,7 +76,7 @@ shutil.copy2(deps / 'glfw/LICENSE.md', licenses / 'glfw-LICENSE.md')
 shutil.copy2(repo / 'packaging/licenses/json-LICENSE.MIT', licenses / 'json-LICENSE.MIT')
 (licenses / 'zlib-LICENSE.txt').write_text((gcc/'x86_64-w64-mingw32/include/zlib.h').read_text(encoding='utf-8').split('*/',1)[0]+'*/\n',encoding='utf-8')
 (licenses / 'README.txt').write_text('GCC / MinGW / GDB and bundled tools: see toolchain/mingw64/licenses and build-info.txt.\nThe installer is ccrIDE native code; ZIP decompression uses zlib.\n', encoding='utf-8')
-(bundle / '使用说明.txt').write_text('''ccrIDE v0.3.3 + GCC 11.5 / Windows x64 离线便携包
+(bundle / '使用说明.txt').write_text('''ccrIDE v0.3.4 + GCC 11.5 / Windows x64 离线便携包
 
 1. 将整个 ccrIDE 文件夹解压到个人可写目录；不要在压缩包内直接运行。
 2. 双击 ccrIDE-v*.exe，新建或打开 .cpp。F10 编译，F11 编译并运行，F12 运行最近一次成功编译的程序。

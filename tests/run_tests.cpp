@@ -1,3 +1,7 @@
+#include <windows.h>
+#include <tlhelp32.h>
+#include "language_host.h"
+#include "lsp_support.h"
 #include "../plugins/completion-docs/comment_links.h"
 #include "../plugins/completion-docs/completion_docs.h"
 #include "plugin_test_support.h"
@@ -1160,6 +1164,44 @@ static int CheckPortablePackage() {
     return g_fail ? 1 : 0;
 }
 
+static std::string languageFile,languageText,languageRequest;
+static unsigned long long languageRevision=0;static size_t languageOffset=0;
+static void LanguageDocument(const char* file,const char* text,size_t size,unsigned long long revision){languageFile=file;languageText.assign(text,size);languageRevision=revision;}
+static void LanguageClose(const char*){}
+static void LanguageRequest(const char* kind,const char*,unsigned long long revision,size_t offset){languageRequest=kind;languageRevision=revision;languageOffset=offset;}
+static void TestLanguageHost() {
+    auto saved=std::move(g_app.editors);int savedIndex=g_app.active;auto originalSettings=g_app.settings;
+    g_app.editors.clear();g_app.editors.push_back(std::make_unique<CodeEditor>());g_app.active=0;
+    g_app.settings.codeCompletion=true;g_app.settings.autoCheck=true;
+    auto& ed=*g_app.editors.front();ed.m_path=(std::filesystem::temp_directory_path()/L"ccride-language-host.cpp").wstring();
+    const std::string text="struct Box{int value;};\nvoid f(){Box box; box.va}";
+    auto setup=[&](){ed.SetText(text);ed.RebuildLines();ed.m_cursor=ed.m_text.find("box.va")+6;ed.OpenCompletion();};
+    PluginLanguageHooks hooks{LanguageDocument,LanguageClose,LanguageRequest};language::Register(&hooks);
+    auto publish=[](nlohmann::json event){auto value=event.dump();language::Publish(value.data(),value.size());};
+    publish({{"kind","status"},{"ready",true}});setup();
+    CHECK(ed.m_languagePending && ed.m_compOpen && ed.m_compItems.empty());CHECK(languageRequest=="completion");
+    auto completion=[&](){return nlohmann::json{{"kind","completion"},{"file",languageFile},{"revision",languageRevision},{"offset",languageOffset},{"items",nlohmann::json::array({{{"label","value"},{"text","value"},{"detail","int"},{"start",languageOffset-2},{"end",languageOffset}}})}};};
+    auto stale=completion();ed.m_text.insert(0," ");publish(stale);CHECK(ed.m_compItems.empty());
+    setup();auto current=completion();ed.CloseCompletion();publish(current);CHECK(!ed.m_compOpen);
+    setup();publish(completion());CHECK(ed.m_compItems.size()==1);CHECK(ed.AcceptCompletion());CHECK(ed.m_text.find("box.value")!=std::string::npos);
+    ed.Undo();CHECK(ed.m_text==text);
+    setup();auto moved=completion();--ed.m_cursor;publish(moved);CHECK(ed.m_compItems.empty());
+    setup();publish({{"kind","status"},{"ready",false}});
+    CHECK(!language::Ready() && !ed.m_languagePending);
+    bool fallback=false;for(auto& item:ed.m_compItems)if(item.label=="value"&&!item.languageRevision)fallback=true;CHECK(fallback);
+    publish({{"kind","status"},{"ready",true}});
+    ed.SetText(u8"int main(){const char* s=u8\"😀\"; int broken = ;}");ed.RebuildLines();ed.m_cursor=ed.m_text.find("broken")+3;ed.OpenCompletion();
+    auto at=ed.m_text.find("broken");auto position=lsp::Position(ed.m_text,at);
+    publish({{"kind","diagnostics"},{"file",languageFile},{"revision",languageRevision},{"items",nlohmann::json::array({{{"position",position},{"error",true},{"message","test error"}}})}});
+    CHECK(ed.m_diags.size()==1 && ed.m_diags[0].col==int(at+1));
+    auto oldRevision=languageRevision;ed.m_text.insert(0," ");publish({{"kind","diagnostics"},{"file",languageFile},{"revision",oldRevision},{"items",nlohmann::json::array()}});CHECK(ed.m_diags.size()==1);
+    setup();CHECK(language::Definition(ed));CHECK(languageRequest=="definition");
+    publish({{"kind","definition"},{"file",languageFile},{"revision",languageRevision},{"offset",languageOffset},{"target",utils::WToU8(ed.m_path)},{"position",{{"line",0},{"character",7}}}});
+    CHECK(g_app.ActiveEditor()==&ed && ed.m_cursor==7);
+    language::Reset();CHECK(!language::Ready());
+    g_app.editors=std::move(saved);g_app.active=savedIndex;g_app.settings=originalSettings;
+}
+
 static void TestCompilerDiscovery() {
     namespace fs=std::filesystem;
     auto root=fs::temp_directory_path()/(L"ccride-compiler-discovery-"+std::to_wstring(GetCurrentProcessId()));
@@ -1270,7 +1312,42 @@ static int CheckRemotePluginInstall(const std::string& url) {
     std::printf("Remote plugin installation: %d passed, %d failed\n",g_pass,g_fail);return g_fail?1:0;
 }
 
+static int CheckClangdArchive(const std::filesystem::path& archive,const std::wstring& compiler) {
+    namespace fs=std::filesystem;
+    auto root=fs::temp_directory_path()/(L"ccride-clangd-package-中文-"+std::to_wstring(GetCurrentProcessId()));
+    fs::create_directories(root/"data");g_app.dataDir=(root/"data").wstring();g_app.settingsPath=(root/"data/settings.json").wstring();g_app.pluginDir=(root/"plugins").wstring();
+    g_app.settings.gppPath=utils::WToU8(compiler);g_app.settings.codeCompletion=true;g_app.settings.autoCheck=true;
+    g_app.editors.clear();g_app.editors.push_back(std::make_unique<CodeEditor>());g_app.active=0;auto& ed=*g_app.editors.front();ed.m_path=(root/L"成员.cpp").wstring();
+    ed.SetText("#include <vector>\nusing Nested=std::vector<std::vector<int>>;\nint main(){Nested data; data. }\n");ed.RebuildLines();ed.m_cursor=ed.m_text.find("data.")+5;utils::WriteFileU8(ed.m_path,ed.m_text);
+    ImGui::CreateContext();std::string error;CHECK(g_app.plugins.InstallLocalArchive(archive.wstring(),error));
+    auto wait=[&](auto predicate,int timeout=15000){auto start=GetTickCount64();while(GetTickCount64()-start<(unsigned)timeout){g_app.plugins.CallFrames();if(predicate())return true;Sleep(15);}return false;};
+    CHECK(wait([](){return language::Ready();}));
+    ed.OpenCompletion();CHECK(ed.m_languagePending);
+    CHECK(wait([&](){for(auto& item:ed.m_compItems)if(item.insertion=="push_back")return true;return false;}));
+    int idx=0;for(size_t i=0;i<ed.m_compItems.size();++i)if(ed.m_compItems[i].insertion=="push_back")idx=int(i);
+    ed.m_compIdx=idx;ed.m_compTouched=true;CHECK(ed.AcceptCompletion());CHECK(ed.m_text.find("data.push_back()")!=std::string::npos);
+    ed.SetText("int broken = \"text\";\n");ed.RebuildLines();ed.m_cursor=ed.m_text.size();
+    CHECK(wait([&](){return !ed.m_diags.empty();}));
+    ed.SetText("struct Box{int value;};\nint main(){Box box; return box.value;}\n");ed.RebuildLines();ed.m_cursor=ed.m_text.rfind("value")+2;
+    CHECK(ed.GotoDefinition());CHECK(wait([&](){return ed.m_cursor==ed.m_text.find("value");}));
+    bool killed=false;HANDLE snapshot=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);PROCESSENTRY32W process{};process.dwSize=sizeof(process);
+    if(snapshot!=INVALID_HANDLE_VALUE){if(Process32FirstW(snapshot,&process))do{if(process.th32ParentProcessID==GetCurrentProcessId()&&_wcsicmp(process.szExeFile,L"clangd.exe")==0){HANDLE child=OpenProcess(PROCESS_TERMINATE,FALSE,process.th32ProcessID);if(child){killed=TerminateProcess(child,42)!=FALSE;CloseHandle(child);}}}while(Process32NextW(snapshot,&process));CloseHandle(snapshot);}
+    CHECK(killed);CHECK(wait([](){return !language::Ready();},3000));
+    ed.SetText("struct Box{int value;};\nint main(){Box box; box.va}");ed.RebuildLines();ed.m_cursor=ed.m_text.find("box.va")+6;ed.OpenCompletion();
+    bool fallback=false;for(auto& item:ed.m_compItems)if(item.label=="value"&&!item.languageRevision)fallback=true;CHECK(fallback);
+    g_app.plugins.ReloadAll();CHECK(wait([](){return language::Ready();}));
+    CHECK(g_app.plugins.Uninstall("clangd",error));CHECK(!language::Ready());
+    ImGui::DestroyContext();g_app.editors.clear();fs::remove_all(root);
+    std::printf("Installed clangd integration: %d passed, %d failed\n",g_pass,g_fail);return g_fail?1:0;
+}
+
 int main(int argc, char** argv) {
+    if(argc==4 && std::string(argv[1])=="--clangd-check") {
+        int count=0;auto wide=CommandLineToArgvW(GetCommandLineW(),&count);
+        if(!wide || count!=4){if(wide)LocalFree(wide);return 2;}
+        std::filesystem::path archive(wide[2]);std::wstring compiler(wide[3]);LocalFree(wide);
+        return CheckClangdArchive(archive,compiler);
+    }
     if(argc==3 && std::string(argv[1])=="--market-check")return CheckRemotePluginInstall(argv[2]);
     if(argc==4 && std::string(argv[1])=="--plugin-check")return CheckLocalPluginArchives(std::filesystem::u8path(argv[2]),std::filesystem::u8path(argv[3]));
     if(argc==3 && std::string(argv[1])=="--plugin-check")return CheckLocalPluginArchives(std::filesystem::u8path(argv[2]));
@@ -1303,6 +1380,7 @@ int main(int argc, char** argv) {
     TestIndependentEditorFeatures();
     TestProcStatusThreadSafe();
     TestCommentLinks();
+    TestLanguageHost();
     TestCompilerDiscovery();
     TestOptionalPluginLifecycle();
     TestCompletionDocumentation();
