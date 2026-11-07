@@ -1,19 +1,12 @@
-# ============================================================
-#  MiniCPP - CMake 构建 (与 build.ps1 双轨并存)
-#  用法:
-#    cmake -B build -G "MinGW Makefiles"
-#    cmake --build build -j
-#  依赖路径与 build.ps1 一致, 可用 -DIMGUI_DIR=... 等覆盖
-# ============================================================
-cmake_minimum_required(VERSION 3.16)
-project(ccrIDE VERSION 0.3.2 LANGUAGES CXX)
-
+cmake_minimum_required(VERSION 3.24)
+set(CCRIDE_RELEASE_VERSION "0.3.2" CACHE STRING "Release version")
+project(ccrIDE VERSION ${CCRIDE_RELEASE_VERSION} LANGUAGES CXX)
+if(NOT WIN32 OR NOT MINGW)
+    message(FATAL_ERROR "ccrIDE currently supports Windows with MinGW-w64. Select the MinGW Makefiles generator and a MinGW-w64 toolchain.")
+endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-set(IMGUI_DIR    "E:/cPP/imgui"    CACHE PATH "Dear ImGui 目录")
-set(GLFW_DIR     "E:/cPP/glfw"     CACHE PATH "GLFW 目录")
-set(NLOHMANN_DIR "E:/cPP/nlohmann" CACHE PATH "nlohmann/json 目录")
+include(cmake/Dependencies.cmake)
 
 set(IMGUI_SOURCES
     ${IMGUI_DIR}/imgui.cpp
@@ -47,12 +40,12 @@ target_include_directories(MiniCPP PRIVATE
     ${IMGUI_DIR} ${IMGUI_DIR}/backends
     ${GLFW_DIR}/include ${NLOHMANN_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_directories(MiniCPP PRIVATE ${GLFW_DIR})
+
 target_link_libraries(MiniCPP PRIVATE
-    glfw3 opengl32 gdi32 user32 shell32 wininet comdlg32 imm32 ole32 advapi32 z)
+    ${CCRIDE_GLFW_TARGET} opengl32 gdi32 user32 shell32 wininet comdlg32 imm32 ole32 advapi32 ZLIB::ZLIB)
 
 # Built-in plugins use unique Clock_/Hello_ entry points and share host ImGui.
-set(PLUGIN_ROOT "E:/cPP/plugins" CACHE PATH "Plugin manifest directory")
+set(PLUGIN_ROOT "${CMAKE_SOURCE_DIR}/build/releases/plugins" CACHE PATH "Plugin manifest directory")
 foreach(p clock hello)
     add_custom_command(TARGET MiniCPP POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "${PLUGIN_ROOT}/${p}"
@@ -80,24 +73,26 @@ foreach(id ai-assistant completion-docs)
 endforeach()
 
 add_executable(ccride_installer WIN32 packaging/installer.cpp)
-target_include_directories(ccride_installer PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(ccride_installer PRIVATE z user32 gdi32 comctl32 shell32 ole32 uuid)
+add_dependencies(ccride_installer ccride_build_metadata)
+target_include_directories(ccride_installer PRIVATE ${CCRIDE_GENERATED} ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(ccride_installer PRIVATE ZLIB::ZLIB user32 gdi32 comctl32 shell32 ole32 uuid)
 target_link_options(ccride_installer PRIVATE -municode -static -static-libgcc -static-libstdc++)
 
 include(CTest)
 if(BUILD_TESTING)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_executable(ai_plugin_tests tests/ai_plugin_tests.cpp src/utils.cpp src/execution.cpp)
     target_include_directories(ai_plugin_tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${NLOHMANN_DIR})
     target_link_libraries(ai_plugin_tests PRIVATE plugin_imgui user32 gdi32 shell32 wininet comdlg32 advapi32)
     target_link_options(ai_plugin_tests PRIVATE -municode -static-libgcc -static-libstdc++)
-    add_test(NAME ccrIDE_ai_plugin COMMAND "C:/Program Files/Python310/python.exe" "${CMAKE_SOURCE_DIR}/tests/ai_plugin_tests.py" $<TARGET_FILE:ai_plugin_tests>)
+    add_test(NAME ccrIDE_ai_plugin COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/ai_plugin_tests.py" $<TARGET_FILE:ai_plugin_tests>)
     set_tests_properties(ccrIDE_ai_plugin PROPERTIES TIMEOUT 35)
 
     add_executable(zip_extract_test tests/zip_extract_test.cpp)
     target_include_directories(zip_extract_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_link_libraries(zip_extract_test PRIVATE z)
+    target_link_libraries(zip_extract_test PRIVATE ZLIB::ZLIB)
     target_link_options(zip_extract_test PRIVATE -municode -static-libgcc -static-libstdc++)
-    add_test(NAME ccrIDE_zip COMMAND "C:/Program Files/Python310/python.exe" "${CMAKE_SOURCE_DIR}/tests/zip_archive_tests.py" $<TARGET_FILE:zip_extract_test>)
+    add_test(NAME ccrIDE_zip COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/zip_archive_tests.py" $<TARGET_FILE:zip_extract_test>)
     add_executable(debugger_tests tests/debugger_tests.cpp src/debugger.cpp src/execution.cpp src/utils.cpp)
     target_include_directories(debugger_tests PRIVATE ${NLOHMANN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(debugger_tests PRIVATE user32 shell32 wininet comdlg32 advapi32)
@@ -125,12 +120,12 @@ if(BUILD_TESTING)
     target_compile_definitions(run_tests PRIVATE CCRIDE_TEST_PLUGIN_ROOT="${CMAKE_SOURCE_DIR}/build/plugins")
     target_include_directories(run_tests PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends
         ${NLOHMANN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(run_tests PRIVATE user32 gdi32 shell32 wininet comdlg32 imm32 ole32 advapi32 shlwapi z)
+    target_link_libraries(run_tests PRIVATE user32 gdi32 shell32 wininet comdlg32 imm32 ole32 advapi32 shlwapi ZLIB::ZLIB)
     if(MINGW)
         target_link_options(run_tests PRIVATE -static-libgcc -static-libstdc++)
     endif()
     add_test(NAME MiniCPP_regression COMMAND run_tests)
-    add_test(NAME ccrIDE_plugin_market COMMAND "C:/Program Files/Python310/python.exe" "${CMAKE_SOURCE_DIR}/tests/plugin_market_tests.py" $<TARGET_FILE:run_tests> $<TARGET_FILE:completion_docs_plugin>)
+    add_test(NAME ccrIDE_plugin_market COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/plugin_market_tests.py" $<TARGET_FILE:run_tests> $<TARGET_FILE:completion_docs_plugin>)
     set_tests_properties(ccrIDE_plugin_market PROPERTIES TIMEOUT 35)
     set_tests_properties(MiniCPP_regression PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 
@@ -142,8 +137,8 @@ if(BUILD_TESTING)
     target_include_directories(ui_preview PRIVATE ${CCRIDE_GENERATED})
     target_include_directories(ui_preview PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends
         ${GLFW_DIR}/include ${NLOHMANN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_directories(ui_preview PRIVATE ${GLFW_DIR})
-    target_link_libraries(ui_preview PRIVATE glfw3 opengl32 gdi32 user32 shell32 wininet comdlg32 imm32 ole32 advapi32 z)
+
+    target_link_libraries(ui_preview PRIVATE ${CCRIDE_GLFW_TARGET} opengl32 gdi32 user32 shell32 wininet comdlg32 imm32 ole32 advapi32 ZLIB::ZLIB)
     if(MINGW)
         target_link_options(ui_preview PRIVATE -static-libgcc -static-libstdc++)
     endif()

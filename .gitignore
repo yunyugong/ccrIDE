@@ -29,3 +29,6 @@ work/
 build_log.txt
 .env
 .env.*
+
+# Local third-party sources (configured through CCRIDE_DEPS_DIR)
+dependencies/

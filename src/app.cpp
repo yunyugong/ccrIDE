@@ -144,7 +144,7 @@ bool App::Init() {
             saveDir = std::wstring(local) + L"\\";
         }
         dataDir = saveDir + L"MiniCPP";
-        pluginDir = L"E:\\cPP\\plugins"; // Keep the existing development installation compatible.
+        pluginDir = executableDir + L"\\plugins";
     }
     backupDir = dataDir + L"\\backup";
     std::error_code directoryError;

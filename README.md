@@ -2,6 +2,8 @@
 
 轻量 C++ IDE，使用 Dear ImGui、GLFW 和 OpenGL。当前版本：**0.3.2**。
 
+定位为轻量、单文件优先的开发环境。高级调试、测试框架集成、大型项目管理仍不完整；重型模板元编程可能超出轻量补全模型的能力。详见 [架构核对与验收边界](docs/architecture-review.md)。
+
 提供代码补全、语法高亮、多文件编辑、独立编译与运行，以及基础 GDB 调试。最初原型保留在 `IDE.py`，当前产品名为 ccrIDE。
 
 [总体需求](docs/product-requirements.md) · [实施计划](docs/implementation-plan.md) · [执行管理与验证边界](docs/execution-manager.md)
@@ -83,31 +85,14 @@ AI 连接通过“插件 → AI 助手设置”配置，设置独立保存至 `d
 
 ## 从源码构建
 
-普通用户使用离线包即可。源码构建需要 Windows、MinGW-w64 GCC、CMake，以及 Dear ImGui docking、GLFW、nlohmann/json 和 zlib。
+需要 Windows/MinGW-w64、CMake 3.24 或以上、匹配的静态 zlib，以及 Dear ImGui docking、GLFW 和 nlohmann/json。默认使用源码中的 dependencies/，可指定 CCRIDE_DEPS_DIR 或各依赖目录。GLFW 支持 CMake 安装包发现，Python 测试解释器自动查找。
 
-依赖可放在自选目录。CMake 暂时保留开发环境默认值，因此在其他电脑上构建时应显式传入实际目录。下面的路径仅为示例：
+详细目录布局、参数和离线打包要求见 [构建说明](docs/building.md)。配置阶段不会自动联网下载依赖。
 
-```powershell
-cmake -S . -B build/cmake -G "MinGW Makefiles" `
-  -DIMGUI_DIR="C:/dependencies/imgui" `
-  -DGLFW_DIR="C:/dependencies/glfw" `
-  -DNLOHMANN_DIR="C:/dependencies/nlohmann" `
-  -DPLUGIN_ROOT="./build/plugins" `
-  -DBUILD_TESTING=OFF
-cmake --build build/cmake --target MiniCPP ai_assistant_plugin completion_docs_plugin ccride_installer -j 4
-```
+    cmake -S . -B build/cmake -G "MinGW Makefiles" -DBUILD_TESTING=OFF
+    cmake --build build/cmake --target MiniCPP ai_assistant_plugin completion_docs_plugin ccride_installer -j 4
 
-`GLFW_DIR` 应包含 `include/` 和已编译的 `libglfw3.a`；`NLOHMANN_DIR` 应包含 `nlohmann/json.hpp`。编译工具链需要能找到 zlib 头文件及库，安装程序需要可静态链接的 zlib。
-
-当前使用 GLFW 3.4 和 Dear ImGui 1.92.9 docking 系列。插件必须使用与宿主相同的 ImGui 版本、配置和目标架构。
-
-- 主程序产物：`build/releases/ccrIDE-v0.3.2.exe`。同版本重复构建会增加编号，旧产物保留。
-- 独立插件产物：`build/plugins/ai-assistant/` 和 `build/plugins/completion-docs/`。
-- 安装程序外壳：`build/cmake/ccride_installer.exe`，需要打包脚本附加程序与工具链后才能用于安装。
-
-`MiniCPP` 是保留的内部构建目标名。`build.ps1` 是历史本机开发入口，完整构建主程序、独立插件和安装程序建议使用 CMake。
-
-构建时间保存在“关于”页面与构建元数据中，不写入发布 EXE 文件名或窗口标题。用户代码每次成功编译的产物保存在源文件旁 `.ccrIDE-build/`，使用唯一名称避免覆盖。
+主程序发布到 build/releases，插件清单默认保存在可执行文件旁的 plugins/。构建时间用于“关于”和元数据，版本化 EXE 保留旧产物。build.ps1 委托同一套 CMake，不再维护固定路径。
 
 ## 打包与检查
 
@@ -115,7 +100,7 @@ cmake --build build/cmake --target MiniCPP ai_assistant_plugin completion_docs_p
 
 离线包由 `packaging/package-portable.py --stage <新暂存目录> --output <新目录> --settings <本机设置文件>` 生成；编译器与依赖位置可通过 `--compiler`、`--dependencies` 指定。安装界面由项目自行编写，ZIP 解压使用 zlib。
 
-构建测试需启用 `BUILD_TESTING`。测试配置中的 Python 解释器路径目前仍需按本机环境调整：
+构建测试需启用 BUILD_TESTING，Python 解释器由 CMake 查找，也可通过 Python3_EXECUTABLE 覆盖：
 
 ```powershell
 cmake --build build/cmake -j 4
@@ -130,6 +115,12 @@ build/cmake/ui_preview.exe build/ui-previews
 ```
 
 v0.3.1 已完成六组自动检查、跨盘插件安装、中文目录安装，以及安装后的编译、运行与基础 GDB 调试检查。
+
+## 插件运行边界
+
+当前 DLL 插件在 IDE 主进程内执行，共享内存与 ImGui 上下文。异步网络请求不等于插件隔离：崩溃、内存错误和死循环仍可能影响 IDE，只应加载可信插件。进程外服务、权限限制与故障注入验收尚未实现。
+
+核心保留轻量补全，工程语义计划由独立 clangd 插件承接；接入目前未完成。专业调试、测试框架及大型工程能力不能由现有基础接口推断为已经具备。
 
 ## 插件开发
 

@@ -14,7 +14,7 @@
 using nlohmann::json;
 namespace fs = std::filesystem;
 
-static std::wstring PluginRoot() { return g_app.pluginDir.empty() ? L"E:\\cPP\\plugins" : g_app.pluginDir; }
+static std::wstring PluginRoot() { return g_app.pluginDir.empty() ? utils::GetExeDir()+L"\\plugins" : g_app.pluginDir; }
 
 static bool ValidPluginId(const std::string& id) {
     if(id.empty() || id.size()>80 || !std::all_of(id.begin(),id.end(),[](unsigned char c){
@@ -475,7 +475,7 @@ void PluginManager::DrawMarketWindow(bool* open) {
 // ===================================================================
 //  软编译插件源码 -> DLL (编译入口, 同步执行)
 // ===================================================================
-// 用当前设置的 g++ 把插件 .cpp 编译成同目录 .dll (链接 imgui 副本, 与宿主隔离)。
+// DLL 链接自己的 ImGui 副本，但共享宿主上下文与进程，不提供故障或权限隔离。
 static bool CompileSoftPluginDll(const std::wstring& src, const std::wstring& extraInc,
                                  std::string& err) {
     std::wstring gpp = utils::U8ToW(g_app.settings.gppPath);
@@ -485,7 +485,7 @@ static bool CompileSoftPluginDll(const std::wstring& src, const std::wstring& ex
     }
     std::wstring dir = utils::DirName(src);
     std::wstring outDll = utils::ReplaceExt(src, L"dll");
-    std::wstring sdk = g_app.portableMode ? g_app.executableDir + L"\\sdk" : L"E:\\cPP";
+    std::wstring sdk = g_app.executableDir + L"\\sdk";
 
     std::vector<std::wstring> args = {
         src, L"-std=c++17", L"-O2", L"-shared",
@@ -498,7 +498,7 @@ static bool CompileSoftPluginDll(const std::wstring& src, const std::wstring& ex
     GetModuleFileNameW(nullptr, exeBuf, MAX_PATH);
     std::wstring ideDir = utils::DirName(exeBuf);
     ideDir += L"\\..\\src";
-    if (g_app.portableMode) ideDir = sdk + L"\\include";
+    if (GetFileAttributesW((sdk + L"\\include").c_str()) != INVALID_FILE_ATTRIBUTES) ideDir = sdk + L"\\include";
     if (GetFileAttributesW(ideDir.c_str()) != INVALID_FILE_ATTRIBUTES)
         args.push_back(L"-I" + ideDir);
     // 用户附加 -I 目录 (空格分隔)
@@ -513,7 +513,7 @@ static bool CompileSoftPluginDll(const std::wstring& src, const std::wstring& ex
             pos = e;
         }
     }
-    // imgui 核心源码: 插件自带一份, 与宿主 ImGui 上下文 ABI 一致 (内存独立)
+    // 插件链接自己的 ImGui 核心函数，但访问同一宿主上下文，必须保持 ABI 和分配器一致。
     for (const wchar_t* f : {L"imgui.cpp", L"imgui_draw.cpp", L"imgui_tables.cpp", L"imgui_widgets.cpp"})
         args.push_back(sdk + L"\\imgui\\" + f);
     args.push_back(L"-o");
