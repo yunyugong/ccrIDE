@@ -1,5 +1,5 @@
 if(NOT DEFINED CCRIDE_VERSION)
-    set(CCRIDE_VERSION "0.3.5")
+    set(CCRIDE_VERSION "0.3.6")
 endif()
 string(TIMESTAMP CCRIDE_TIME "%Y-%m-%d %H:%M:%S UTC" UTC)
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")

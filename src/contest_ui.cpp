@@ -84,7 +84,7 @@ void Draw(bool* open){
  }
  ImGui::EndDisabled();
  ImGui::Separator();ImGui::Text("得分: %.2f",state.score);
- for(size_t i=0;i<state.results.size();++i){auto& result=state.results[i];ImGui::PushID(int(i));if(ImGui::TreeNode("##result","%s  %s  %llu ms  %.1f MiB",result.name.c_str(),result.verdict.c_str(),result.elapsed,result.peak/1048576.0)){ImGui::TextWrapped("%s",result.difference.c_str());ImGui::TextUnformatted(result.error.c_str());ImGui::TextUnformatted(result.output.c_str());ImGui::TreePop();}ImGui::PopID();}
+ for(size_t i=0;i<state.results.size();++i){auto& result=state.results[i];ImGui::PushID(int(i));if(ImGui::TreeNode("##result","%s  %s  %llu ms  %.1f MiB",result.name.c_str(),result.verdict.c_str(),result.elapsed,result.peak/1048576.0)){ImGui::Text("退出码: %lu (0x%08lX)",result.exitCode,result.exitCode);ImGui::TextWrapped("%s",result.termination.c_str());ImGui::TextWrapped("%s",result.difference.c_str());ImGui::TextUnformatted(result.error.c_str());ImGui::TextUnformatted(result.output.c_str());ImGui::TreePop();}ImGui::PopID();}
  }
  ImGui::End();
 }

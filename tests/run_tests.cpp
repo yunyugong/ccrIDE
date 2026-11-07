@@ -1,3 +1,4 @@
+#include <fstream>
 #include <windows.h>
 #include <tlhelp32.h>
 #include "language_host.h"
@@ -1169,6 +1170,25 @@ static unsigned long long languageRevision=0;static size_t languageOffset=0;
 static void LanguageDocument(const char* file,const char* text,size_t size,unsigned long long revision){languageFile=file;languageText.assign(text,size);languageRevision=revision;}
 static void LanguageClose(const char*){}
 static void LanguageRequest(const char* kind,const char*,unsigned long long revision,size_t offset){languageRequest=kind;languageRevision=revision;languageOffset=offset;}
+static void TestPluginBoundaries(){
+ namespace fs=std::filesystem;auto root=fs::temp_directory_path()/(L"ccride-plugin-boundary-"+std::to_wstring(GetCurrentProcessId()));fs::create_directories(root/"plugins/probe");fs::create_directories(root/"working");
+ auto oldPlugin=g_app.pluginDir,oldData=g_app.dataDir;g_app.pluginDir=(root/"plugins").wstring();g_app.dataDir=(root/"data").wstring();fs::create_directories(g_app.dataDir);
+ auto manifest=nlohmann::json{{"id","probe"},{"name","Dependency probe"},{"kind","soft"},{"entry","probe.dll"},{"apiVersion",2}};
+ utils::WriteFileU8((root/"plugins/probe/plugin.json").wstring(),manifest.dump());
+ fs::copy_file(fs::u8path(CCRIDE_FIXTURE_CONSUMER),root/"plugins/probe/probe.dll");
+ fs::copy_file(fs::u8path(CCRIDE_FIXTURE_GOOD),root/"plugins/probe/ccride_fixture_dependency.dll");
+ fs::copy_file(fs::u8path(CCRIDE_FIXTURE_BAD),root/"working/ccride_fixture_dependency.dll");
+ auto cwd=fs::current_path();fs::current_path(root/"working");ImGui::CreateContext();
+ g_app.console.Clear();g_app.plugins.ScanAndLoad();CHECK(g_app.plugins.plugins.size()==1&&g_app.plugins.plugins[0].loaded);
+ bool correct=false;for(auto& line:g_app.console.lines)if(line.text.find("DEPENDENCY=1")!=std::string::npos)correct=true;CHECK(correct);g_app.plugins.UnloadAll();
+ fs::remove(root/"plugins/probe/ccride_fixture_dependency.dll");g_app.plugins.ScanAndLoad();CHECK(g_app.plugins.plugins.size()==1&&!g_app.plugins.plugins[0].loaded);g_app.plugins.UnloadAll();
+ fs::create_directories(root/"plugins/duplicate");auto duplicate=manifest;duplicate["id"]="PROBE";utils::WriteFileU8((root/"plugins/duplicate/plugin.json").wstring(),duplicate.dump());
+ g_app.plugins.ScanAndLoad();CHECK(g_app.plugins.plugins.size()==2);for(auto& plugin:g_app.plugins.plugins)CHECK(!plugin.loaded&&plugin.loadError.find("相同 ID")!=std::string::npos);g_app.plugins.UnloadAll();
+ fs::remove_all(root/"plugins/duplicate");fs::copy_file(fs::u8path(CCRIDE_FIXTURE_GOOD),root/"plugins/probe/ccride_fixture_dependency.dll");
+ {std::fstream file(root/"plugins/probe/probe.dll",std::ios::in|std::ios::out|std::ios::binary);IMAGE_DOS_HEADER dos{};file.read(reinterpret_cast<char*>(&dos),sizeof(dos));file.seekp(dos.e_lfanew+sizeof(DWORD));WORD machine=IMAGE_FILE_MACHINE_I386;file.write(reinterpret_cast<char*>(&machine),sizeof(machine));}
+ g_app.plugins.ScanAndLoad();CHECK(g_app.plugins.plugins.size()==1&&!g_app.plugins.plugins[0].loaded&&g_app.plugins.plugins[0].loadError.find("x64")!=std::string::npos);g_app.plugins.UnloadAll();
+ ImGui::DestroyContext();fs::current_path(cwd);g_app.pluginDir=oldPlugin;g_app.dataDir=oldData;fs::remove_all(root);
+}
 static void TestAllTabRecovery(){
  namespace fs=std::filesystem;auto root=fs::temp_directory_path()/(L"ccride-alltabs-"+std::to_wstring(GetCurrentProcessId()));fs::create_directories(root);
  auto saved=std::move(g_app.editors);int active=g_app.active;auto dir=g_app.dataDir;auto oldSnapshot=std::move(g_app.recoverSnapshot);auto oldSelection=std::move(g_app.recoverSelection);bool pending=g_app.recoverPending;
@@ -1404,6 +1424,7 @@ int main(int argc, char** argv) {
     TestLanguageHost();
     TestMultiCaret();
     TestAllTabRecovery();
+    TestPluginBoundaries();
     TestCompilerDiscovery();
     TestOptionalPluginLifecycle();
     TestCompletionDocumentation();

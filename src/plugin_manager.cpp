@@ -4,6 +4,8 @@
 #include "ui_helpers.h"
 #include "zip_archive.h"
 #include "language_host.h"
+#include "plugin_validation.h"
+#include <map>
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <nlohmann/json.hpp>
@@ -106,12 +108,20 @@ void PluginManager::ScanAndLoad() {
         return false;
     };
 
+    auto key=[](std::string id){for(char& c:id)if(c>='A'&&c<='Z')c=char(c-'A'+'a');return id;};
+    std::map<std::string,size_t> identities;
+    std::error_code scanError;
+    for(fs::directory_iterator it(fs::path(root),scanError),end;!scanError&&it!=end;it.increment(scanError)){
+        auto dir=it->path();DWORD attr=GetFileAttributesW(dir.c_str());
+        if(attr==INVALID_FILE_ATTRIBUTES||!(attr&FILE_ATTRIBUTE_DIRECTORY)||(attr&FILE_ATTRIBUTE_REPARSE_POINT))continue;
+        std::string manifest;if(utils::ReadFileU8((dir/L"plugin.json").wstring(),manifest))try{auto id=json::parse(manifest).value("id","");if(ValidPluginId(id))++identities[key(id)];}catch(...){}
+    }
     WIN32_FIND_DATAW fd;
     HANDLE h = FindFirstFileW((root + L"\\*").c_str(), &fd);
     if (h == INVALID_HANDLE_VALUE) return;
     do {
         std::wstring name = fd.cFileName;
-        if (name == L"." || name == L".." || !(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+        if (name == L"." || name == L".." || !(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) continue;
         std::wstring dir = root + L"\\" + name;
         std::wstring manifestPath = dir + L"\\plugin.json";
         std::string manifestText;
@@ -140,7 +150,9 @@ void PluginManager::ScanAndLoad() {
             continue;
         }
 
-        if(pi.apiVersion<1 || pi.apiVersion>CCRIDE_PLUGIN_API_VERSION) {
+        if(identities[key(pi.id)]>1) {
+            pi.loadError="多个插件声明相同 ID，已阻止加载，请移除重复目录";
+        } else if(pi.apiVersion<1 || pi.apiVersion>CCRIDE_PLUGIN_API_VERSION) {
             pi.loadError="插件需要接口版本 "+std::to_string(pi.apiVersion)+"，当前支持 1–"+std::to_string(CCRIDE_PLUGIN_API_VERSION);
         } else if(pi.kind!="hard" && pi.kind!="soft") {
             pi.loadError="未知的插件类型";
@@ -175,9 +187,9 @@ void PluginManager::ScanAndLoad() {
                 plugins.push_back(std::move(pi));   // 尚无 entry (未安装 DLL)
                 continue;
             }
-            pi.dllPath = dir + L"\\" + utils::U8ToW(pi.entry);
-            if (GetFileAttributesW(pi.dllPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
-                HMODULE hmod = LoadLibraryW(pi.dllPath.c_str());
+            pi.dllPath = fs::absolute(fs::path(dir)/utils::U8ToW(pi.entry)).wstring();
+            if (pluginvalidation::NativeDll(pi.dllPath,pi.loadError)) {
+                HMODULE hmod = LoadLibraryExW(pi.dllPath.c_str(),nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
                 if (hmod) {
                     pi.hmod    = hmod;
                     pi.onLoad  = (Plugin_OnLoadFn)GetProcAddress(hmod, pi.apiVersion>=3 ? "Plugin_OnLoadV3" : (pi.apiVersion>=2 ? "Plugin_OnLoadV2" : PLUGIN_LOAD_NAME));
@@ -195,8 +207,6 @@ void PluginManager::ScanAndLoad() {
                 } else {
                     pi.loadError="无法加载 DLL（系统错误 "+std::to_string(GetLastError())+"），请检查依赖或 64 位兼容性";
                 }
-            } else {
-                pi.loadError="找不到 DLL 文件: "+pi.entry;
             }
         }
         if(!pi.loadError.empty())g_app.console.Append("[插件] "+pi.name+": "+pi.loadError+"\n",IM_COL32(255,160,100,255));

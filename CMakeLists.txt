@@ -3,7 +3,7 @@ set(CCRIDE_RELEASE_VERSION "" CACHE STRING "Optional release version override")
 if(CCRIDE_RELEASE_VERSION)
     project(ccrIDE VERSION ${CCRIDE_RELEASE_VERSION} LANGUAGES CXX)
 else()
-    project(ccrIDE VERSION 0.3.5 LANGUAGES CXX)
+    project(ccrIDE VERSION 0.3.6 LANGUAGES CXX)
 endif()
 if(NOT WIN32 OR NOT MINGW)
     message(FATAL_ERROR "ccrIDE currently supports Windows with MinGW-w64. Select the MinGW Makefiles generator and a MinGW-w64 toolchain.")
@@ -119,6 +119,18 @@ if(BUILD_TESTING)
     add_test(NAME ccrIDE_clangd COMMAND clangd_tests "${CCRIDE_TEST_CLANGD}" "${CMAKE_CXX_COMPILER}")
     set_tests_properties(ccrIDE_clangd PROPERTIES TIMEOUT 80 SKIP_RETURN_CODE 77)
 
+    add_library(plugin_fixture_good SHARED tests/plugin_dependency_fixture.cpp)
+    add_library(plugin_fixture_bad SHARED tests/plugin_dependency_fixture.cpp)
+    target_compile_definitions(plugin_fixture_bad PRIVATE FIXTURE_VALUE=2)
+    foreach(kind good bad)
+        set_target_properties(plugin_fixture_${kind} PROPERTIES PREFIX "" OUTPUT_NAME "ccride_fixture_dependency"
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-fixtures/${kind}"
+            ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-fixtures/${kind}")
+    endforeach()
+    add_library(plugin_fixture_consumer SHARED tests/plugin_consumer_fixture.cpp)
+    target_include_directories(plugin_fixture_consumer PRIVATE src)
+    target_link_libraries(plugin_fixture_consumer PRIVATE plugin_fixture_good)
+    set_target_properties(plugin_fixture_consumer PROPERTIES PREFIX "" RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-fixtures")
     add_executable(workflow_tests tests/workflow_tests.cpp src/contest.cpp src/recovery.cpp src/utils.cpp src/execution.cpp)
     target_include_directories(workflow_tests PRIVATE src ${NLOHMANN_DIR})
     target_link_libraries(workflow_tests PRIVATE user32 shell32 wininet comdlg32 advapi32)
@@ -177,6 +189,12 @@ if(BUILD_TESTING)
         ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp
         ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp)
     add_dependencies(run_tests execution_fixture completion_docs_plugin ai_assistant_plugin)
+    add_dependencies(run_tests plugin_fixture_consumer plugin_fixture_bad)
+    target_compile_definitions(run_tests PRIVATE
+        CCRIDE_FIXTURE_CONSUMER="$<TARGET_FILE:plugin_fixture_consumer>"
+        CCRIDE_FIXTURE_GOOD="$<TARGET_FILE:plugin_fixture_good>"
+        CCRIDE_FIXTURE_BAD="$<TARGET_FILE:plugin_fixture_bad>")
+
     target_compile_definitions(run_tests PRIVATE CCRIDE_TEST_PLUGIN_ROOT="${CMAKE_SOURCE_DIR}/build/plugins")
     target_include_directories(run_tests PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends
         ${NLOHMANN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)

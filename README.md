@@ -1,8 +1,10 @@
 # ccrIDE
 
-轻量 C++ IDE，使用 Dear ImGui、GLFW 和 OpenGL。当前版本：**0.3.5**。
+轻量 C++ IDE，使用 Dear ImGui、GLFW 和 OpenGL。当前版本：**0.3.6**。
 
-新增多光标/列编辑、clangd 语义重命名预览、样例/Subtask/对拍和所有标签恢复。用法、验证范围及限制见 [工作流说明](docs/workflows.md)。
+0.3.6 修复恢复备份轮换、测试归档一致性，并收紧 DLL 依赖查找与重复 ID 检查。详情见 [0.3.6 修复记录](docs/reliability-0.3.6.md)。
+
+0.3.5 新增多光标/列编辑、clangd 语义重命名预览、样例/Subtask/对拍和所有标签恢复。用法、验证范围及限制见 [工作流说明](docs/workflows.md)。
 
 定位为轻量、单文件优先的开发环境。高级调试、测试框架集成、大型项目管理仍不完整；重型模板元编程可能超出轻量补全模型的能力。详见 [架构核对与验收边界](docs/architecture-review.md)。
 
@@ -12,7 +14,7 @@
 
 ## 安装与使用
 
-Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查看进度和取消安装。便携 ZIP 提供相同的程序文件，解压后运行 `ccrIDE-v0.3.5.exe`。
+Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查看进度和取消安装。便携 ZIP 提供相同的程序文件，解压后运行 `ccrIDE-v0.3.6.exe`。
 
 当前 GitHub 仓库提供源码，安装程序和插件 ZIP 尚未上传到 Releases。
 
