@@ -1,0 +1,9 @@
+{
+  "id": "hello",
+  "name": "示例插件 Hello",
+  "version": "1.0",
+  "author": "ccrIDE",
+  "description": "插件 API 最小示例 (硬编译: 随 IDE 一起构建)",
+  "kind": "hard",
+  "bundled": true
+}

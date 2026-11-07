@@ -1,0 +1,10 @@
+{
+  "id": "ai-assistant",
+  "name": "AI 助手",
+  "version": "1.0.0",
+  "author": "ccrIDE",
+  "description": "独立的 AI 编程助手，支持自定义接口、流式对话和选中代码",
+  "entry": "ai-assistant.dll",
+  "kind": "soft",
+  "apiVersion": 2
+}

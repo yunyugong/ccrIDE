@@ -1,0 +1,9 @@
+{
+  "id": "clock",
+  "name": "时钟",
+  "version": "1.0",
+  "author": "ccrIDE",
+  "description": "实时时钟示例插件 (硬编译: 随 IDE 一起构建)",
+  "kind": "hard",
+  "bundled": true
+}

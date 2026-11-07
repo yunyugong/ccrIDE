@@ -1,0 +1,31 @@
+# 构建产物
+build/
+*.exe
+*.o
+*.obj
+
+# 运行时数据 (个人配置/自动保存/会话)
+data/
+autosave.cpp
+session.json
+settings.json
+
+# 插件
+plugins/*/build/
+
+# 系统
+Thumbs.db
+Desktop.ini
+
+# Local archives, dependencies, and private runtime files
+*.dll
+*.zip
+*.7z
+*.pyc
+__pycache__/
+RedPanda-CPP-*/
+outputs/
+work/
+build_log.txt
+.env
+.env.*

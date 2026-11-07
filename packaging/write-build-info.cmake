@@ -1,0 +1,6 @@
+if(NOT DEFINED CCRIDE_VERSION)
+    set(CCRIDE_VERSION "0.3.1")
+endif()
+string(TIMESTAMP CCRIDE_TIME "%Y-%m-%d %H:%M:%S UTC" UTC)
+file(MAKE_DIRECTORY "${OUTPUT_DIR}")
+file(WRITE "${OUTPUT_DIR}/ccride_build_info.h" "#pragma once\n#define CCRIDE_VERSION \"${CCRIDE_VERSION}\"\n#define CCRIDE_BUILD_TIME \"${CCRIDE_TIME}\"\n")
