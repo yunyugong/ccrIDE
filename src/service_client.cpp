@@ -13,7 +13,7 @@ Reply Call(const std::wstring& executable,const std::string& method,const nlohma
         if(attributes==INVALID_FILE_ATTRIBUTES || (attributes&FILE_ATTRIBUTE_DIRECTORY))
             return {false,"找不到服务程序，请检查插件安装是否完整"};
         auto id=++nextId;
-        execution::Request request;
+        execution::Request request;request.lane=execution::Lane::Service;request.label="AI 服务";request.logOutput=false;
         request.exe=executable;request.cwd=std::filesystem::path(executable).parent_path().wstring();
         request.input=nlohmann::json{{"v",1},{"id",id},{"method",method},{"payload",payload}}.dump()+"\n";
         if(request.input.size()>requestLimit) {reply.error="服务请求超过 2 MiB 限制，请缩短输入或清空历史";return reply;}

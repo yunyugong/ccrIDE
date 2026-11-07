@@ -640,7 +640,15 @@ static void TestManagedCompileRun() {
     CHECK(g_app.showTerminal && g_app.focusTerminal);
     CHECK(logs.find("退出码 0") != std::string::npos);
     CHECK(!g_app.procBusy.load() && !g_app.runInteractive.load());
-    CHECK(fs::exists(dir / L"build_out.txt") && fs::exists(dir / L"build_err.txt"));
+    CHECK(!fs::exists(dir / L"build_out.txt") && !fs::exists(dir / L"build_err.txt"));
+    bool taskLogs=false;
+    for(auto& task:execution::ListTasks())if(task.cwd==dir.wstring()&&task.state=="completed"){
+        auto record=fs::path(task.task.directory);
+        taskLogs=fs::is_regular_file(record/"stdout.bin")&&fs::is_regular_file(record/"stderr.bin");
+        if(taskLogs)break;
+    }
+    CHECK(taskLogs);
+
     const auto firstArtifact=g_app.lastArtifacts.at(source.wstring());
     CHECK(fs::exists(firstArtifact));
     utils::WriteFileU8((dir/L"main.exe").wstring(),"old-exe-sentinel");
@@ -1147,7 +1155,9 @@ static int CheckPortablePackage() {
         for (const auto& line : g_app.terminal.lines) logs += line.text;
     CHECK(logs.find("portable-package-ok 3") != std::string::npos);
     CHECK(logs.find("退出码 0") != std::string::npos);
-    CHECK(!SymbolIndex::I().IncludeDirs().empty());
+    bool vectorHeader=false;
+    for(auto& dir:SymbolIndex::I().IncludeDirs())if(std::filesystem::is_regular_file(std::filesystem::path(dir)/L"vector"))vectorHeader=true;
+    CHECK(vectorHeader);
     g_app.StartCompileRun(BuildAction::Debug);
     if(g_app.procThread.joinable()) g_app.procThread.join();
     auto debugStart=GetTickCount64();
@@ -1187,6 +1197,13 @@ static void TestPluginBoundaries(){
  fs::remove_all(root/"plugins/duplicate");fs::copy_file(fs::u8path(CCRIDE_FIXTURE_GOOD),root/"plugins/probe/ccride_fixture_dependency.dll");
  {std::fstream file(root/"plugins/probe/probe.dll",std::ios::in|std::ios::out|std::ios::binary);IMAGE_DOS_HEADER dos{};file.read(reinterpret_cast<char*>(&dos),sizeof(dos));file.seekp(dos.e_lfanew+sizeof(DWORD));WORD machine=IMAGE_FILE_MACHINE_I386;file.write(reinterpret_cast<char*>(&machine),sizeof(machine));}
  g_app.plugins.ScanAndLoad();CHECK(g_app.plugins.plugins.size()==1&&!g_app.plugins.plugins[0].loaded&&g_app.plugins.plugins[0].loadError.find("x64")!=std::string::npos);g_app.plugins.UnloadAll();
+ for(const char* id:{"ai-assistant","clangd"}){
+  manifest["id"]=id;
+  utils::WriteFileU8((root/"plugins/probe/plugin.json").wstring(),manifest.dump());
+  g_app.plugins.ScanAndLoad();
+  CHECK(g_app.plugins.plugins.size()==1&&!g_app.plugins.plugins[0].loaded&&g_app.plugins.plugins[0].loadError.find("1.2.0")!=std::string::npos);
+  g_app.plugins.UnloadAll();
+ }
  ImGui::DestroyContext();fs::current_path(cwd);g_app.pluginDir=oldPlugin;g_app.dataDir=oldData;fs::remove_all(root);
 }
 static void TestAllTabRecovery(){
@@ -1302,10 +1319,9 @@ static int CheckLocalPluginArchives(const std::filesystem::path& archives,const 
     CodeEditor editor;editor.SetText("// plugin comment\nint pluginCount;\nvoid f(){ pluginCou");editor.RebuildLines();editor.m_cursor=editor.m_text.size();editor.OpenCompletion();
     CHECK(!editor.m_compItems.empty());for(auto& item:editor.m_compItems)CHECK(item.doc.empty());
     g_app.settings.disabledPlugins.clear();g_app.plugins.ReloadAll();CHECK(g_app.plugins.HasCompletionProvider());
-    auto aiArchive=archives/"ai-assistant-v1.1.0.zip";
-    if(!fs::exists(aiArchive))aiArchive=archives/"ai-assistant-v1.0.0.zip";
+    auto aiArchive=archives/"ai-assistant-v1.2.0.zip";
     CHECK(g_app.plugins.InstallLocalArchive(aiArchive.wstring(),error));
-    if(aiArchive.filename()=="ai-assistant-v1.1.0.zip")CHECK(fs::is_regular_file(root/"plugins/ai-assistant/ai-service.exe"));
+    CHECK(fs::is_regular_file(root/"plugins/ai-assistant/ai-service.exe"));
     bool aiLoaded=false;for(auto& plugin:g_app.plugins.plugins)if(plugin.id=="ai-assistant" && plugin.loaded)aiLoaded=true;CHECK(aiLoaded);
     CHECK(fs::is_regular_file(root/"data/plugins/ai-assistant/settings.json"));
     CHECK(!g_app.plugins.InstallLocalArchive((archives/"completion-docs-v1.0.0.zip").wstring(),error));
@@ -1364,7 +1380,13 @@ static int CheckClangdArchive(const std::filesystem::path& archive,const std::ws
     auto wait=[&](auto predicate,int timeout=15000){auto start=GetTickCount64();while(GetTickCount64()-start<(unsigned)timeout){g_app.plugins.CallFrames();if(predicate())return true;Sleep(15);}return false;};
     CHECK(wait([](){return language::Ready();}));
     ed.OpenCompletion();CHECK(ed.m_languagePending);
-    CHECK(wait([&](){for(auto& item:ed.m_compItems)if(item.insertion=="push_back")return true;return false;}));
+    bool hasCompletion=wait([&](){for(auto& item:ed.m_compItems)if(item.insertion=="push_back")return true;return false;});
+    CHECK(hasCompletion);
+    if(!hasCompletion){
+        std::printf("clangd ready=%d items=%zu pending=%d\\n",language::Ready(),ed.m_compItems.size(),ed.m_languagePending);
+        for(auto& d:ed.m_diags)std::printf("diagnostic: %s\\n",d.msg.c_str());
+        for(auto& line:g_app.console.lines)std::printf("%s",line.text.c_str());
+    }
     int idx=0;for(size_t i=0;i<ed.m_compItems.size();++i)if(ed.m_compItems[i].insertion=="push_back")idx=int(i);
     ed.m_compIdx=idx;ed.m_compTouched=true;CHECK(ed.AcceptCompletion());CHECK(ed.m_text.find("data.push_back()")!=std::string::npos);
     ed.SetText("int broken = \"text\";\n");ed.RebuildLines();ed.m_cursor=ed.m_text.size();
@@ -1390,8 +1412,13 @@ int main(int argc, char** argv) {
         return CheckClangdArchive(archive,compiler);
     }
     if(argc==3 && std::string(argv[1])=="--market-check")return CheckRemotePluginInstall(argv[2]);
-    if(argc==4 && std::string(argv[1])=="--plugin-check")return CheckLocalPluginArchives(std::filesystem::u8path(argv[2]),std::filesystem::u8path(argv[3]));
-    if(argc==3 && std::string(argv[1])=="--plugin-check")return CheckLocalPluginArchives(std::filesystem::u8path(argv[2]));
+    if((argc==3||argc==4) && std::string(argv[1])=="--plugin-check"){
+        int count=0;auto wide=CommandLineToArgvW(GetCommandLineW(),&count);
+        if(!wide||count!=argc){if(wide)LocalFree(wide);return 2;}
+        std::filesystem::path archive(wide[2]);
+        auto base=argc==4?std::filesystem::path(wide[3]):std::filesystem::temp_directory_path();
+        LocalFree(wide);return CheckLocalPluginArchives(archive,base);
+    }
     if (argc == 2 && std::string(argv[1]) == "--package-check") return CheckPortablePackage();
     // 符号索引/文件补全依赖 include 搜索路径: 指向本机编译器 (否则惰性解析会缓存为空)
     if (g_app.settings.gppPath.empty()) {

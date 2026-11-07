@@ -128,6 +128,7 @@ void PluginManager::ScanAndLoad() {
         if (!utils::ReadFileU8(manifestPath, manifestText)) continue;
 
         PluginInfo pi;
+        unsigned coordinator=0;
         pi.dir = dir;
         try {
             json j = json::parse(manifestText);
@@ -138,6 +139,7 @@ void PluginManager::ScanAndLoad() {
             pi.description = j.value("description", "");
             pi.entry       = j.value("entry", "");
             pi.apiVersion  = j.value("apiVersion",1u);
+            coordinator = j.value("taskCoordinatorVersion",0u);
             pi.kind        = j.value("kind", "soft");   // 默认 soft=外置 DLL
             pi.bundled     = j.value("bundled", false);
         } catch (...) { continue; }
@@ -152,6 +154,8 @@ void PluginManager::ScanAndLoad() {
 
         if(identities[key(pi.id)]>1) {
             pi.loadError="多个插件声明相同 ID，已阻止加载，请移除重复目录";
+        } else if((pi.id=="ai-assistant" || pi.id=="clangd") && coordinator!=1) {
+            pi.loadError="此服务插件未接入任务调度，请更新到 1.2.0 或更高兼容版本";
         } else if(pi.apiVersion<1 || pi.apiVersion>CCRIDE_PLUGIN_API_VERSION) {
             pi.loadError="插件需要接口版本 "+std::to_string(pi.apiVersion)+"，当前支持 1–"+std::to_string(CCRIDE_PLUGIN_API_VERSION);
         } else if(pi.kind!="hard" && pi.kind!="soft") {
@@ -298,6 +302,7 @@ void PluginManager::RequestFetchRemote() {
                     it.dllUrl      = j.value("dllUrl", "");
                     it.sha256      = j.value("sha256", "");
                     it.apiVersion  = j.value("apiVersion",1u);
+                    it.taskCoordinatorVersion=j.value("taskCoordinatorVersion",0u);
                     it.bundled     = false;
                     if (!ValidPluginId(it.id) || !ValidPluginEntry(it.entry) || it.dllUrl.empty() || it.apiVersion<1 || it.apiVersion>CCRIDE_PLUGIN_API_VERSION) continue;
                     items.push_back(std::move(it));
@@ -341,7 +346,7 @@ void PluginManager::RequestInstall(const MarketItem& it) {
             if(!utils::WriteFileU8((staging/fs::u8path(copy.entry)).wstring(),dllData))throw std::runtime_error("写入 DLL 失败");
             json manifest={{"id",copy.id},{"name",copy.name},{"version",copy.version},
                 {"author",copy.author},{"description",copy.description},{"entry",copy.entry},
-                {"apiVersion",copy.apiVersion},{"kind","soft"},{"bundled",false}};
+                {"taskCoordinatorVersion",copy.taskCoordinatorVersion},{"apiVersion",copy.apiVersion},{"kind","soft"},{"bundled",false}};
             if(!utils::WriteFileU8((staging/L"plugin.json").wstring(),manifest.dump(2)))throw std::runtime_error("写入插件清单失败");
             fs::rename(staging,target);owned=false;
             PushMsg(NetKind::InstallOk,copy.name);
@@ -534,8 +539,7 @@ static bool CompileSoftPluginDll(const std::wstring& src, const std::wstring& ex
     args.push_back(outDll);
 
     auto r = utils::RunProcess(gpp, args, dir,
-                               g_app.dataDir + L"\\plug_build_out.txt",
-                               g_app.dataDir + L"\\plug_build_err.txt", 60000, true);
+                               L"", L"", 60000, true,nullptr,execution::Lane::Foreground,"插件源码编译");
     if (!r.ok) { err = "无法启动编译器: " + r.error; return false; }
     if (r.exitCode != 0) {
         err = r.err.empty() ? ("编译失败 (退出码 " + std::to_string(r.exitCode) + ")") : r.err;

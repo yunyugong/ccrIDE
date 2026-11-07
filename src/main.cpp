@@ -39,7 +39,7 @@ static void DrawAboutWindow();
 static void DrawSearchWindow();
 static void DrawFileTreeWindow();
 static void DrawRecoverModal();
-static bool showContest=false;
+static bool showContest=false,showTasks=false;
 static void DrawCloseConfirmModal();
 static void HandleGlobalShortcuts();
 static void DrawWorkspaceToolbar();
@@ -163,6 +163,7 @@ int main() {
         DrawRecoverModal();
         language::DrawRename();
         if(showContest)contest::Draw(&showContest);
+        if(showTasks)execution::DrawTaskWindow(&showTasks);
         DrawCloseConfirmModal();
 
         HandleGlobalShortcuts();
@@ -405,6 +406,7 @@ static void DrawMainMenuBar() {
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("运行")) {
+        ImGui::MenuItem("任务管理",nullptr,&showTasks);
         if (ImGui::MenuItem("编译", HotkeyText("compile").c_str(), false, !g_app.procBusy.load())) { g_app.showConsole=true; g_app.StartCompileRun(BuildAction::Compile); }
         if (ImGui::MenuItem("编译并运行", HotkeyText("run").c_str(), false, !g_app.procBusy.load())) { g_app.showConsole = true; g_app.StartCompileRun(); }
         if (ImGui::MenuItem("运行已编译程序", HotkeyText("runOnly").c_str(), false, !g_app.procBusy.load())) { g_app.showConsole=true; g_app.StartCompileRun(BuildAction::Run); }
@@ -906,7 +908,8 @@ static void DrawSettingsWindow() {
     field("程序参数");
     ui::InputTextStd("##runArguments", g_app.settings.runArguments);
     help("按 Windows 参数规则解析，含空格的参数用双引号包住，空参数写作双引号对。");
-    field("运行目录 (留空使用源文件目录)");
+    ImGui::Checkbox("每次运行使用独立工作目录",&g_app.settings.isolatedRunDirectory);
+    field("指定运行目录（填写后优先使用；关闭隔离且留空时使用源码目录）");
     ui::InputTextStd("##runDirectory", g_app.settings.runDirectory);
     field("GDB 路径 (留空使用编译器目录中的 gdb.exe)");
     ui::InputTextStd("##gdbPath",g_app.settings.gdbPath);

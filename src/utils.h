@@ -21,6 +21,7 @@ bool ReadFileU8(const std::wstring& path, std::string& out);
 unsigned long long FileSize(const std::wstring& path);   // 不存在返回 0
 
 // ---- 路径 ----
+std::wstring PathWithExecutableDirectory(const std::wstring& executable);
 std::wstring GetExeDir();                       // 可执行文件所在目录
 std::wstring DirName(const std::wstring& path); // 所在目录 (不含文件名)
 std::wstring FileBase(const std::wstring& path); // 文件名部分
@@ -43,6 +44,7 @@ struct RunResult {
     std::string out;            // stdout 内容
     std::string err;            // stderr 内容
     std::string error;          // 创建失败原因
+    execution::Task task;ULONGLONG queuedMs=0;std::wstring cwd;
     execution::Reason reason = execution::Reason::LaunchFailed;
     ULONGLONG elapsedMs = 0;
     size_t peakMemoryBytes = 0;
@@ -54,7 +56,7 @@ RunResult RunProcess(const std::wstring& exe,
                      const std::wstring& errFile,
                      DWORD timeoutMs,
                      bool noWindow,
-                     std::atomic<bool>* cancel = nullptr);
+                     std::atomic<bool>* cancel = nullptr, execution::Lane lane=execution::Lane::Foreground, const std::string& label="编译/工具",const execution::Task& task={});
 
 // ---- 时间戳 backup_YYYYMMDD_HHMMSS ----
 std::wstring BackupName();

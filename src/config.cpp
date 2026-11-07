@@ -23,6 +23,7 @@ bool Settings::Load(const std::wstring& path) {
         runOutputLimitMB = std::clamp(j.value("runOutputLimitMB", 16), 1, 64);
         compileTimeLimitMs = std::clamp(j.value("compileTimeLimitMs", 120000), 100, 3600000);
         runArguments = j.value("runArguments", std::string());
+        isolatedRunDirectory=j.value("isolatedRunDirectory",true);
         runDirectory = j.value("runDirectory", std::string());
         runEnvironment = j.value("runEnvironment", std::string());
         gdbPath = j.value("gdbPath", std::string());
@@ -86,6 +87,7 @@ void Settings::Save(const std::wstring& path, const std::wstring& portableRoot) 
     j["runOutputLimitMB"] = runOutputLimitMB;
     j["compileTimeLimitMs"] = compileTimeLimitMs;
     j["runArguments"] = runArguments;
+    j["isolatedRunDirectory"]=isolatedRunDirectory;
     j["runDirectory"] = runDirectory;
     j["runEnvironment"] = runEnvironment;
     j["gdbPath"] = portableRoot.empty() ? gdbPath : utils::WToU8(portable::Store(portableRoot,utils::U8ToW(gdbPath)));

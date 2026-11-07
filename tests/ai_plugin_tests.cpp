@@ -22,7 +22,15 @@ int wmain(int argc,wchar_t** argv) {
     CHECK(state.error.empty());CHECK(state.result==u8"完整回复：你好");CHECK(state.history.size()==2);
     state.useStream=true;state.Send("stream",Selection());state.worker.join();
     CHECK(state.error.empty());CHECK(state.result==u8"流式回复：你好");CHECK(state.history.size()==4);
-    state.Send("slow","");Sleep(100);state.Stop();state.worker.join();CHECK(!state.busy);
+    auto waitForPiece=[&](){
+        auto start=GetTickCount64();
+        while(GetTickCount64()-start<3000){
+            {std::lock_guard<std::mutex> lock(state.mtx);if(!state.result.empty())return true;}
+            if(!state.busy)return false;Sleep(10);
+        }
+        return false;
+    };
+    state.Send("slow","");CHECK(waitForPiece());state.Stop();state.worker.join();CHECK(!state.busy);
     auto historyBefore=state.history.size();
     state.Send("slow","");
     bool killed=false;
@@ -42,7 +50,7 @@ int wmain(int argc,wchar_t** argv) {
     state.worker.join();CHECK(killed);CHECK(!state.error.empty());CHECK(state.history.size()==historyBefore);
     state.useStream=false;state.Send("normal","");state.worker.join();CHECK(state.error.empty());CHECK(state.history.size()==historyBefore+2);
     state.useStream=true;
-    state.Send("slow","");Sleep(60);auto start=GetTickCount64();Plugin_OnUnload();
+    state.Send("slow","");CHECK(waitForPiece());auto start=GetTickCount64();Plugin_OnUnload();
     CHECK(!state.worker.joinable());CHECK(GetTickCount64()-start<3000);
     ImGui::DestroyContext();std::cout<<"AI plugin: "<<passes<<" passed\n";
     return 0;

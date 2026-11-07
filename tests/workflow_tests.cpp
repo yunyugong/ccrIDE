@@ -8,7 +8,9 @@
 namespace fs=std::filesystem;
 #define CHECK(x) do{if(!(x)){std::cerr<<"FAIL "<<__LINE__<<": "<<#x<<"\n";return 1;}++passed;}while(0)
 int wmain(int argc,wchar_t** argv){
- int passed=0;if(argc!=2)return 2;auto root=fs::temp_directory_path()/(L"ccride-workflow-中文 "+std::to_wstring(GetCurrentProcessId()));fs::create_directories(root);
+ int passed=0;if(argc!=2)return 2;
+ wchar_t system[32768]{};GetSystemDirectoryW(system,32768);SetEnvironmentVariableW(L"PATH",system);
+auto root=fs::temp_directory_path()/(L"ccride-workflow-中文 "+std::to_wstring(GetCurrentProcessId()));fs::create_directories(root);
  recovery::Snapshot snapshot;snapshot.active=1;snapshot.tabs.push_back({"saved","original.cpp","int changed;","int old;",5,2,true});snapshot.tabs.push_back({"untitled","","","",0,0,true});std::string error;
  CHECK(recovery::Save((root/"recovery").wstring(),snapshot,error));recovery::Snapshot restored;CHECK(recovery::Load((root/"recovery").wstring(),restored,error));CHECK(restored.tabs.size()==2&&restored.tabs[1].text.empty()&&restored.active==1&&restored.tabs[0].anchor==2);
  auto next=snapshot;next.tabs[0].text="second";CHECK(recovery::Save((root/"recovery").wstring(),next,error));utils::WriteFileU8((root/"recovery/workspace.json").wstring(),"{broken");CHECK(recovery::Load((root/"recovery").wstring(),restored,error));CHECK(restored.tabs[0].text=="int changed;"&&!error.empty());

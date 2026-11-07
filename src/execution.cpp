@@ -3,6 +3,11 @@
 #include <algorithm>
 #include <cwctype>
 #include <memory>
+#include <filesystem>
+#include <fstream>
+#include <wincrypt.h>
+#include <sddl.h>
+#include <nlohmann/json.hpp>
 
 namespace execution {
 #ifdef MINICPP_EXECUTION_TESTING
@@ -104,15 +109,17 @@ const char* ReasonText(Reason reason) {
     case Reason::ProcessLimit: return "进程数量超限";
     case Reason::IoError: return "输入输出失败";
     case Reason::CleanupFailed: return "进程清理失败";
+    case Reason::QueueTimeout: return "排队超时";
     }
     return "未知状态";
 }
 
-Result Run(const Request& r) {
+static bool Cancelled(const Request& r){return (r.cancel&&r.cancel->load())||(r.isCancelled&&r.isCancelled());}
+static Result RunManaged(const Request& r) {
     Result result;
     const ULONGLONG start = GetTickCount64();
     auto fail = [&](const char* step) { result.error = SystemError(step); };
-    if (r.cancel && r.cancel->load()) { result.reason = Reason::Cancelled; return result; }
+    if (Cancelled(r)) { result.reason = Reason::Cancelled; return result; }
     if (r.exe.empty() || !r.limits.outputBytes) { result.error = "可执行文件为空或输出上限为零"; return result; }
     if (r.exe.find(L'\0') != std::wstring::npos || r.cwd.find(L'\0') != std::wstring::npos) {
         result.error = "路径包含无效的空字符"; return result;
@@ -211,6 +218,7 @@ Result Run(const Request& r) {
         fail("恢复进程失败"); abortLaunch(true); return result;
     }
     result.started = true; result.reason = Reason::Exited;
+    if(r.onStarted)r.onStarted(info.dwProcessId);
     thread.reset(); inRead.reset(); outWrite.reset(); errWrite.reset();
     std::string pendingInput = r.input;
     size_t inputPos = 0;
@@ -251,7 +259,7 @@ Result Run(const Request& r) {
     auto drain = [&](HANDLE pipe, bool isErr) {
         // Budget is per channel per iteration; cancellation is checked between reads.
         for (size_t budget = 0; budget < 65536 && result.reason == Reason::Exited;) {
-            if (r.cancel && r.cancel->load()) { result.reason = Reason::Cancelled; break; }
+            if (Cancelled(r)) { result.reason = Reason::Cancelled; break; }
             DWORD available = 0;
             if (!PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr)) {
                 if (GetLastError() != ERROR_BROKEN_PIPE) { result.reason = Reason::IoError; fail("读取输出状态失败"); }
@@ -304,7 +312,7 @@ Result Run(const Request& r) {
     bool parentExited = false;
     for (;;) {
         notifications();
-        if (r.cancel && r.cancel->load() && result.reason == Reason::Exited) result.reason = Reason::Cancelled;
+        if (Cancelled(r) && result.reason == Reason::Exited) result.reason = Reason::Cancelled;
         if (result.reason == Reason::Exited && r.limits.timeMs && GetTickCount64() - start >= r.limits.timeMs)
             result.reason = Reason::TimedOut;
         if (result.reason != Reason::Exited) break;
@@ -353,6 +361,127 @@ Result Run(const Request& r) {
         result.peakMemoryBytes = limits.PeakJobMemoryUsed;
     if (!GetExitCodeProcess(process, &result.exitCode)) { result.reason = Reason::CleanupFailed; fail("读取退出码失败"); }
     result.elapsedMs = GetTickCount64() - start;
+    return result;
+}
+
+namespace {
+namespace fs=std::filesystem;using nlohmann::json;
+bool ValidId(const std::string& id){return id.size()==32&&std::all_of(id.begin(),id.end(),[](char c){return(c>='0'&&c<='9')||(c>='a'&&c<='f');});}
+std::wstring Scope(){
+    Handle token;DWORD size=0;
+    if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&token.value))throw std::runtime_error("无法读取调度用户");
+    GetTokenInformation(token,TokenUser,nullptr,0,&size);std::vector<unsigned char> data(size);
+    if(!size||!GetTokenInformation(token,TokenUser,data.data(),size,&size))throw std::runtime_error("无法读取用户标识");
+    wchar_t* sid=nullptr;if(!ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(data.data())->User.Sid,&sid))throw std::runtime_error("无法转换用户标识");
+    std::wstring result=L"Local\\ccrIDE.Tasks.v1."+std::wstring(sid);LocalFree(sid);return result;
+}
+ULONGLONG OwnerStart(){FILETIME created{},exit{},kernel{},user{};if(!GetProcessTimes(GetCurrentProcess(),&created,&exit,&kernel,&user))return 0;return(ULONGLONG(created.dwHighDateTime)<<32)|created.dwLowDateTime;}
+bool Alive(DWORD pid,ULONGLONG start){
+    Handle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION|SYNCHRONIZE,FALSE,pid));if(!process||WaitForSingleObject(process,0)!=WAIT_TIMEOUT)return false;
+    FILETIME created{},exit{},kernel{},user{};return GetProcessTimes(process,&created,&exit,&kernel,&user)&&((ULONGLONG(created.dwHighDateTime)<<32)|created.dwLowDateTime)==start;
+}
+void WriteRecord(const TaskInfo& task,ULONGLONG ownerStart,const Request& request){
+    json args=json::array();for(auto& arg:request.args)args.push_back(utils::WToU8(arg));
+    json data={{"schema",1},{"id",task.task.id},{"label",task.label},{"state",task.state},{"lane",task.lane},{"ownerPid",task.ownerPid},{"ownerStart",ownerStart},{"childPid",task.childPid},{"exitCode",task.exitCode},{"createdTick",task.createdTick},{"queuedMs",task.queuedMs},{"elapsedMs",task.elapsedMs},{"cwd",utils::WToU8(task.cwd)},{"exe",utils::WToU8(request.exe)},{"arguments",args},{"error",task.error}};
+    auto temporary=fs::path(task.task.directory)/"task.json.tmp",file=fs::path(task.task.directory)/"task.json";
+    if(!utils::WriteFileU8(temporary.wstring(),data.dump(2,' ',false,json::error_handler_t::replace))||
+       !MoveFileExW(temporary.c_str(),file.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("无法保存任务状态");
+}
+struct Slot {std::vector<std::unique_ptr<Handle>> handles;HANDLE owned=nullptr;~Slot(){if(owned)ReleaseMutex(owned);}};
+}
+const char* LaneText(Lane lane){return lane==Lane::Background?"后台检查":lane==Lane::Service?"服务":"前台";}
+std::wstring TaskRoot(){
+    wchar_t root[32768]{};DWORD size=GetEnvironmentVariableW(L"CCRIDE_TASK_ROOT",root,32768);if(size&&size<32768)return root;
+    size=GetTempPathW(32768,root);if(!size||size>=32768)throw std::runtime_error("无法确定任务目录");
+    return (fs::path(root)/L"ccrIDE"/L"tasks").wstring();
+}
+bool CreateTask(Task& task,std::string& error,const std::wstring& root){
+    try{
+        HCRYPTPROV provider=0;if(!CryptAcquireContextW(&provider,nullptr,nullptr,PROV_RSA_FULL,CRYPT_VERIFYCONTEXT|CRYPT_SILENT))throw std::runtime_error("无法生成任务 ID");
+        unsigned char random[16];BOOL ok=CryptGenRandom(provider,sizeof(random),random);CryptReleaseContext(provider,0);if(!ok)throw std::runtime_error("无法生成任务 ID");
+        const char* hex="0123456789abcdef";std::string id;for(unsigned char c:random){id+=hex[c>>4];id+=hex[c&15];}
+        auto base=fs::absolute(fs::path(root.empty()?TaskRoot():root));fs::create_directories(base);auto dir=base/utils::U8ToW(id);
+        if(!fs::create_directory(dir))throw std::runtime_error("任务目录已存在");
+        fs::create_directories(dir/"work");fs::create_directories(dir/"tmp");task={id,dir.wstring()};error.clear();return true;
+    }catch(const std::exception& e){error=e.what();return false;}
+}
+bool CancelTask(const std::string& id){
+    if(!ValidId(id))return false;try{auto name=Scope()+L".cancel."+utils::U8ToW(id);Handle event(OpenEventW(EVENT_MODIFY_STATE,FALSE,name.c_str()));return event&&SetEvent(event);}catch(...){return false;}
+}
+std::vector<TaskInfo> ListTasks(const std::wstring& root,size_t maximum){
+    std::vector<TaskInfo> tasks;try{
+        std::vector<std::pair<fs::file_time_type,fs::path>> files;std::error_code error;
+        for(fs::directory_iterator it(fs::path(root.empty()?TaskRoot():root),error),end;!error&&it!=end;it.increment(error)){
+            auto dir=it->path();if(!ValidId(utils::WToU8(dir.filename().wstring())))continue;
+            DWORD attr=GetFileAttributesW(dir.c_str());if(attr==INVALID_FILE_ATTRIBUTES||(attr&FILE_ATTRIBUTE_REPARSE_POINT)||!(attr&FILE_ATTRIBUTE_DIRECTORY))continue;
+            auto file=dir/"task.json";auto time=fs::last_write_time(file,error);if(error){error.clear();continue;}files.push_back({time,file});
+        }
+        std::sort(files.begin(),files.end(),[](auto& a,auto& b){return a.first>b.first;});
+        for(auto& entry:files){if(tasks.size()>=maximum)break;try{
+            std::string text;if(!utils::ReadFileU8(entry.second.wstring(),text)||text.size()>1024*1024)continue;auto data=json::parse(text);TaskInfo task;
+            task.task={data.at("id"),entry.second.parent_path().wstring()};if(task.task.id!=utils::WToU8(entry.second.parent_path().filename().wstring()))continue;
+            task.label=data.at("label");task.state=data.at("state");task.lane=data.at("lane");task.ownerPid=data.at("ownerPid");task.childPid=data.at("childPid");task.exitCode=data.at("exitCode");task.queuedMs=data.at("queuedMs");task.elapsedMs=data.at("elapsedMs");task.cwd=utils::U8ToW(data.at("cwd"));task.error=data.at("error");task.createdTick=data.value("createdTick",0ull);
+            task.active=task.state=="queued"||task.state=="starting"||task.state=="running";
+            if(task.active&&!Alive(task.ownerPid,data.at("ownerStart"))){task.active=false;task.state="interrupted";}
+            if(task.active&&task.createdTick){if(task.state=="queued")task.queuedMs=GetTickCount64()-task.createdTick;else task.elapsedMs=GetTickCount64()-task.createdTick-task.queuedMs;}
+            tasks.push_back(std::move(task));
+        }catch(...){}}
+    }catch(...){}return tasks;
+}
+Result Run(const Request& original){
+    Request request=original;Result result;TaskInfo state;Slot slot;Handle cancelEvent,claim;ULONGLONG start=GetTickCount64(),ownerStart=OwnerStart();bool callbackError=false;
+    std::ofstream out,err;bool haveState=false;
+    auto notify=[&](const char* next){state.state=next;WriteRecord(state,ownerStart,request);if(original.onState)try{original.onState(state);}catch(...){}};
+    try{
+        if(request.task.id.empty()&&!CreateTask(request.task,result.error,request.taskRoot))return result;
+        result.task=request.task;if(!ValidId(request.task.id)||request.task.directory.empty())throw std::runtime_error("任务上下文无效");
+        auto directory=fs::absolute(request.task.directory);request.task.directory=directory.wstring();result.task=request.task;
+        claim.reset(CreateFileW((directory/L".claimed").c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr));
+        if(!claim)throw std::runtime_error("任务 ID 已使用，不能重复执行");
+        claim.reset();
+        state.task=request.task;state.label=request.label;state.lane=LaneText(request.lane);state.ownerPid=GetCurrentProcessId();state.createdTick=start;
+        if(request.isolateWorkingDirectory)request.cwd=(directory/"work").wstring();state.cwd=request.cwd;result.cwd=request.cwd;
+        request.environment[L"CCRIDE_TASK_ID"]=utils::U8ToW(request.task.id);request.environment[L"CCRIDE_TASK_DIR"]=request.task.directory;
+        auto has=[&](const wchar_t* key){for(auto& item:request.environment)if(_wcsicmp(item.first.c_str(),key)==0)return true;return false;};
+        if(!has(L"TEMP"))request.environment[L"TEMP"]=(directory/"tmp").wstring();if(!has(L"TMP"))request.environment[L"TMP"]=(directory/"tmp").wstring();
+        auto scope=Scope();cancelEvent.reset(CreateEventW(nullptr,TRUE,FALSE,(scope+L".cancel."+utils::U8ToW(request.task.id)).c_str()));if(!cancelEvent)throw std::runtime_error("无法创建任务取消通道");
+        auto previous=request.isCancelled;
+        request.isCancelled=[&](){
+            try{return callbackError||(previous&&previous())||WaitForSingleObject(cancelEvent,0)==WAIT_OBJECT_0;}
+            catch(...){callbackError=true;return true;}
+        };
+        auto priorInput=request.pollInput;
+        if(priorInput)request.pollInput=[&](){
+            try{return priorInput();}catch(...){callbackError=true;return std::string{};}
+        };
+        haveState=true;notify("queued");
+        int count=request.lane==Lane::Background?1:2;std::wstring lane=request.lane==Lane::Background?L"background":request.lane==Lane::Service?L"service":L"foreground";std::vector<HANDLE> handles{cancelEvent};
+        for(int i=0;i<count;++i){auto handle=std::make_unique<Handle>(CreateMutexW(nullptr,FALSE,(scope+L"."+lane+L"."+std::to_wstring(i)).c_str()));if(!*handle)throw std::runtime_error("无法创建全局并发名额");handles.push_back(*handle);slot.handles.push_back(std::move(handle));}
+        for(;;){
+            result.queuedMs=GetTickCount64()-start;if(Cancelled(request)){result.reason=Reason::Cancelled;break;}
+            if(request.queueTimeoutMs&&result.queuedMs>=request.queueTimeoutMs){result.reason=Reason::QueueTimeout;break;}
+            DWORD wait=WaitForMultipleObjects(DWORD(handles.size()),handles.data(),FALSE,25);
+            if(wait==WAIT_OBJECT_0){result.reason=Reason::Cancelled;break;}
+            DWORD index=wait>=WAIT_ABANDONED_0&&wait<WAIT_ABANDONED_0+handles.size()?wait-WAIT_ABANDONED_0:wait-WAIT_OBJECT_0;
+            if(index>0&&index<handles.size()){slot.owned=handles[index];break;}if(wait==WAIT_FAILED)throw std::runtime_error("等待并发名额失败");
+        }
+        state.queuedMs=result.queuedMs;
+        if(slot.owned&&!Cancelled(request)){
+            notify("starting");
+            if(request.logOutput){out.open(directory/"stdout.bin",std::ios::binary);err.open(directory/"stderr.bin",std::ios::binary);if(!out||!err)throw std::runtime_error("无法创建任务输出记录");}
+            auto priorStarted=request.onStarted;request.onStarted=[&](DWORD pid){try{state.childPid=pid;notify("running");if(priorStarted)priorStarted(pid);}catch(...){callbackError=true;}};
+            auto priorOutput=request.onOutput;request.onOutput=[&](const std::string& text,bool isErr){try{if(request.logOutput){auto& file=isErr?err:out;file.write(text.data(),text.size());if(!file)throw std::runtime_error("输出记录写入失败");}if(priorOutput)priorOutput(text,isErr);}catch(...){callbackError=true;}};
+            result=RunManaged(request);result.task=request.task;result.cwd=request.cwd;result.queuedMs=state.queuedMs;
+            if(request.logOutput){out.flush();err.flush();if(!out||!err)callbackError=true;}
+            if(callbackError){result.reason=Reason::IoError;result.error="任务输出回调或记录失败";}
+        }else if(slot.owned)result.reason=Reason::Cancelled;
+        state.elapsedMs=result.elapsedMs;state.exitCode=result.exitCode;state.error=result.error;
+        if(result.reason!=Reason::Exited&&state.error.empty())state.error=ReasonText(result.reason);
+        notify(result.reason==Reason::Cancelled?"cancelled":result.reason==Reason::Exited?(result.exitCode?"failed":"completed"):"failed");
+    }catch(const std::exception& e){
+        result.error=e.what();if(result.started)result.reason=Reason::IoError;
+        state.error=result.error;state.elapsedMs=result.elapsedMs;state.exitCode=result.exitCode;if(haveState)try{notify("failed");}catch(...){}
+    }
     return result;
 }
 } // namespace execution

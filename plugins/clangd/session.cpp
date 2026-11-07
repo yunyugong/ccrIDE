@@ -107,11 +107,14 @@ void Session::Start(Config config) {
             };
             json capabilities={{"general",{{"positionEncodings",json::array({"utf-16"})}}},{"textDocument",{{"completion",{{"completionItem",{{"snippetSupport",false},{"insertReplaceSupport",false}}}}},{"publishDiagnostics",{{"versionSupport",true}}}}}};
             send({{"jsonrpc","2.0"},{"id",1},{"method","initialize"},{"params",{{"processId",GetCurrentProcessId()},{"rootUri",config.database.empty()?json():json(lsp::Uri(utils::WToU8(config.database)))},{"capabilities",capabilities},{"initializationOptions",{{"fallbackFlags",config.flags}}}}}});
-            execution::Request request;request.exe=config.executable;request.cwd=fs::path(config.executable).parent_path().wstring();
+            execution::Request request;request.lane=execution::Lane::Service;request.label="clangd";request.logOutput=false;request.onStarted=[&](DWORD){started=GetTickCount64();};request.exe=config.executable;request.cwd=fs::path(config.executable).parent_path().wstring();
             request.args={L"--log=error",L"--background-index=0",L"--clang-tidy=0",L"--header-insertion=never",L"--completion-style=detailed",L"--completion-parse=always",L"--limit-results=120",L"--pch-storage=memory"};
             if(config.backgroundIndex)request.args[1]=L"--background-index=1";
             if(!config.database.empty())request.args.push_back(L"--compile-commands-dir="+config.database);
             if(!config.compiler.empty()){auto compiler=utils::WToU8(config.compiler);std::replace(compiler.begin(),compiler.end(),'\\','/');request.args.push_back(L"--query-driver="+utils::U8ToW(compiler));}
+            // Driver probes may spawn cc1plus, which needs the selected toolchain DLLs.
+            // Keep this local to clangd and its descendants; the IDE environment is unchanged.
+            if(!config.compiler.empty())request.environment[L"PATH"]=utils::PathWithExecutableDirectory(config.compiler);
             request.capture=false;request.interactive=true;request.cancel=&cancel;request.limits.timeMs=0;request.limits.memoryBytes=config.memoryMiB*1024*1024;request.limits.outputBytes=1024ull*1024*1024;
             request.onOutput=[&](const std::string& bytes,bool errorChannel){
                 try {auto now=GetTickCount64();if(now-rateStart>=1000){rateStart=now;rateBytes=0;}rateBytes+=bytes.size();if(rateBytes>16*1024*1024)throw std::runtime_error("LSP rate limit");if(!errorChannel)framer.Feed(bytes,reply);}

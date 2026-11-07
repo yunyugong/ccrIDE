@@ -30,7 +30,7 @@ void Draw(bool* open){
   if(ImGui::Button("保存配置"))Save();ImGui::SameLine();if(ImGui::Button("打开归档")&&!state.archive.empty())ShellExecuteW(nullptr,L"open",utils::U8ToW(state.archive).c_str(),nullptr,nullptr,SW_SHOWNORMAL);
  }
  ImGui::BeginDisabled(state.running);
- ImGui::TextWrapped("时间、内存和输出限制使用设置中的运行限制；工作目录为解法源码目录。");
+ ImGui::TextWrapped("时间、内存和输出限制使用设置中的运行限制；启用隔离目录后，每次执行使用独立工作目录。");
  static std::string importDirectory,replayDirectory;
  Field("导入目录（.in / 同名 .out）",importDirectory);
  if(ImGui::Button("导入样例目录"))try{
@@ -47,7 +47,7 @@ void Draw(bool* open){
   auto* ed=g_app.ActiveEditor();if(!ed){message="请先打开待测源码";return;}
   if((!ed->HasPath()||ed->m_dirty)&&!g_app.SaveActive(false)){message="请保存待测源码";return;}
   if(g_app.settings.useCmdTemplate){message="测试使用结构化编译参数，请先关闭自定义编译命令";return;}
-  config.solution=ed->m_path;config.compiler=utils::U8ToW(g_app.settings.gppPath);config.archive=g_app.dataDir+L"\\runs";config.stress=stress;
+  config.solution=ed->m_path;config.compiler=utils::U8ToW(g_app.settings.gppPath);config.archive=g_app.dataDir+L"\\runs";config.stress=stress;config.isolatedWorkingDirectory=g_app.settings.isolatedRunDirectory;
   if(stress){for(auto* path:{&config.reference,&config.generator})if(!path->empty()&&std::filesystem::path(*path).is_relative())*path=(std::filesystem::path(config.solution).parent_path()/ *path).lexically_normal().wstring();}
   const wchar_t* standards[]={L"-std=c++17",L"-std=c++20",L"-std=c++14",L"-std=c++11",L"-std=c++23"};
   config.flags={standards[std::clamp(g_app.settings.stdVersion,0,4)]};

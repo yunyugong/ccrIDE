@@ -1,3 +1,4 @@
+#include <filesystem>
 #include "debugger.h"
 #include "gdb_mi.h"
 #include "utils.h"
@@ -111,7 +112,12 @@ void Debugger::Record(const std::string& line) {
 bool Debugger::Start(const std::wstring& gdb,execution::Request target,
                      const std::vector<std::pair<std::string,int>>& breakpoints,const std::wstring& inputFile,DWORD commandTimeoutMs) {
     if(Snapshot().active) return false;
-    Join(); cancel.store(false); pauseRequested.store(false);
+    Join();
+    std::string taskError;if(!execution::CreateTask(target.task,taskError)){std::lock_guard<std::mutex> lock(mutex);state.status=taskError;return false;}
+    if(target.isolateWorkingDirectory)target.cwd=(std::filesystem::path(target.task.directory)/L"work").wstring();
+    std::wstring actualInput=inputFile;
+    if(actualInput.empty()){actualInput=(std::filesystem::path(target.task.directory)/L"stdin.txt").wstring();if(!utils::WriteFileU8(actualInput,""))return false;}
+    cancel.store(false); pauseRequested.store(false);
     {
         std::lock_guard<std::mutex> lock(mutex);
         state=DebugSnapshot{}; state.active=true; state.status="启动 GDB...";
@@ -124,7 +130,7 @@ bool Debugger::Start(const std::wstring& gdb,execution::Request target,
         std::string args="-exec-arguments";
         // GDB's native target supports stdin redirection through run arguments.
         for(const auto& argument:target.args) args+=" "+mi::Quote(GdbNative(argument));
-        if(!inputFile.empty()) args+=" < "+mi::Quote(GdbNative(inputFile));
+        if(!actualInput.empty()) args+=" < "+mi::Quote(GdbNative(actualInput));
         commands.emplace_back(args,"setup");
         for(const auto& point:breakpoints) commands.emplace_back("-break-insert "+mi::Quote(GdbNative(utils::U8ToW(point.first))+":"+std::to_string(point.second)),"setup");
         if(breakpoints.empty()) commands.emplace_back("-break-insert -t main","setup");
@@ -133,6 +139,7 @@ bool Debugger::Start(const std::wstring& gdb,execution::Request target,
     }
     worker=std::thread([this,gdb,target,commandTimeoutMs]() {
         execution::Request request;
+        request.task=target.task;request.label="GDB 调试";request.logOutput=false;
         request.exe=gdb; request.args={L"--interpreter=mi2",L"--nx",L"--quiet"};
         request.cwd=target.cwd; request.environment=target.environment;
         request.limits.timeMs=0; request.limits.outputBytes=16*1024*1024;

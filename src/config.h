@@ -28,6 +28,7 @@ struct Settings {
     int runOutputLimitMB = 16;     // stdout/stderr 合计；范围 1..64
     int compileTimeLimitMs = 120000;
     std::string runArguments;       // Windows argv quoting
+    bool isolatedRunDirectory=true;
     std::string runDirectory;       // Empty = source directory
     std::string runEnvironment;     // NAME=value, one override per line
     std::string gdbPath;

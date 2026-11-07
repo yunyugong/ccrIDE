@@ -410,6 +410,16 @@ int main(int argc, char** argv) {
                 g_app.recoverSnapshot.tabs.clear();g_app.recoverSelection.clear();g_app.recoverPending=false;
             }
         }
+        {
+            bool tasksOpen=true;
+            for(int frame=0;frame<3;++frame){
+                ImGui_ImplOpenGL3_NewFrame();ImGui_ImplGlfw_NewFrame();ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(4,4));ImGui::SetNextWindowSize(ImVec2(width-8,height-8));
+                execution::DrawTaskWindow(&tasksOpen);
+                ImGui::Render();glViewport(0,0,width,height);glClear(GL_COLOR_BUFFER_BIT);ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+                if(frame==2)SaveFrame(output/(scenario==2?"tasks-compact.bmp":scenario==1?"tasks-light.bmp":"tasks-dark.bmp"),width,height);
+            }
+        }
         if(scenario==0) UnloadDocumentationTestPlugin();
         g_shellIcons.Clear();
         ImGui_ImplOpenGL3_Shutdown(); ImGui_ImplGlfw_Shutdown(); ImGui::DestroyContext();

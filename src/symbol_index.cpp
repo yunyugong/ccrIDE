@@ -306,16 +306,22 @@ void SymbolIndex::EnsureIncludeDirs() {
     std::wstring gpp = utils::U8ToW(g_app.settings.gppPath);
 
     if (!gpp.empty()) {
-        std::wstring outF = g_app.dataDir + L"\\sym_gcc_out.txt";
-        std::wstring errF = g_app.dataDir + L"\\sym_gcc_err.txt";
-        utils::RunResult r = utils::RunProcess(gpp,
-            { L"-x", L"c++", L"-E", L"-v", L"nul" },
-            L"", outF, errF, 6000, true);
-        std::string all;
-        utils::ReadFileU8(errF, all);
-        std::string o2; utils::ReadFileU8(outF, o2);
-        all += "\n" + o2;
-        DeleteFileW(outF.c_str()); DeleteFileW(errF.c_str());
+        // This legacy lazy query is synchronous; do not wait on busy foreground jobs.
+        execution::Request query;
+        query.exe=gpp;query.cwd=utils::DirName(gpp);
+        query.environment[L"PATH"]=utils::PathWithExecutableDirectory(gpp);
+        query.args={L"-x",L"c++",L"-E",L"-v",L"nul"};
+        query.label="头文件路径查询";query.lane=execution::Lane::Background;
+        query.queueTimeoutMs=100;query.limits={6000,0,1024*1024};
+        query.cancel=&g_app.shuttingDown;
+        auto result=execution::Run(query);
+        std::string all=result.err+"\n"+result.out;
+        if(!utils::IsValidUtf8(all)){
+            int size=MultiByteToWideChar(CP_ACP,0,all.data(),int(all.size()),nullptr,0);
+            std::wstring decoded(size,0);
+            if(size)MultiByteToWideChar(CP_ACP,0,all.data(),int(all.size()),decoded.data(),size);
+            all=utils::WToU8(decoded);
+        }
         size_t p1 = all.find("search starts here");
         size_t p2 = all.find("End of search list");
         if (p1 != std::string::npos && p2 != std::string::npos && p2 > p1) {
@@ -330,9 +336,9 @@ void SymbolIndex::EnsureIncludeDirs() {
                 if (a == std::string::npos) continue;
                 size_t b = line.find_last_not_of(" \t\r");
                 line = line.substr(a, b - a + 1);
-                if (line.find(' ') != std::string::npos) continue;          // 说明行
                 if (line.find("(framework directory)") != std::string::npos) continue;
-                m_dirs.push_back(utils::U8ToW(line));
+                auto path=utils::U8ToW(line);DWORD attributes=GetFileAttributesW(path.c_str());
+                if(attributes!=INVALID_FILE_ATTRIBUTES&&(attributes&FILE_ATTRIBUTE_DIRECTORY))m_dirs.push_back(path);
             }
         }
     }
@@ -353,8 +359,11 @@ void SymbolIndex::EnsureIncludeDirs() {
                         if (!(fd2.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
                         if (fd2.cFileName[0] == L'.') continue;
                         std::wstring base = arch + L"\\" + fd2.cFileName +
-                                            L"\\include\\c++\\" + fd2.cFileName;
-                        if (FileExists(base)) m_dirs.push_back(base);
+                                            L"\\include\\c++";
+                        for(auto candidate:{base,base+L"\\"+fd.cFileName,base+L"\\backward"}){
+                            DWORD attr=GetFileAttributesW(candidate.c_str());
+                            if(attr!=INVALID_FILE_ATTRIBUTES&&(attr&FILE_ATTRIBUTE_DIRECTORY))m_dirs.push_back(candidate);
+                        }
                     } while (FindNextFileW(h2, &fd2));
                     FindClose(h2);
                 }

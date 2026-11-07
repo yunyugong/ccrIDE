@@ -235,22 +235,28 @@ bool FindGpp(const std::vector<std::wstring>& roots,std::wstring& out) {
     auto found=FindGpps(roots);if(found.empty())return false;out=found.front();return true;
 }
 
+std::wstring PathWithExecutableDirectory(const std::wstring& executable) {
+    wchar_t path[32768]{};
+    DWORD length=GetEnvironmentVariableW(L"PATH",path,32768);
+    std::wstring inherited=(length&&length<32768)?std::wstring(path,length):L"";
+    auto directory=DirName(executable);
+    return directory.empty()?inherited:directory+(inherited.empty()?L"":L";"+inherited);
+}
+
 RunResult RunProcess(const std::wstring& exe,
                      const std::vector<std::wstring>& args,
                      const std::wstring& cwd,
                      const std::wstring& outFile,
                      const std::wstring& errFile,
-                     DWORD timeoutMs, bool noWindow, std::atomic<bool>* cancel) {
-    execution::Request request;
+                     DWORD timeoutMs, bool noWindow, std::atomic<bool>* cancel,execution::Lane lane,const std::string& label,const execution::Task& task) {
+    execution::Request request;request.lane=lane;request.label=label;request.task=task;
     request.exe = exe; request.args = args; request.cwd = cwd;
     request.limits.timeMs = timeoutMs;
     request.noWindow = noWindow; request.cancel = cancel;
-    wchar_t inheritedPath[32768];
-    DWORD pathLength = GetEnvironmentVariableW(L"PATH", inheritedPath, 32768);
-    if (pathLength && pathLength < 32768 && !DirName(exe).empty())
-        request.environment[L"PATH"] = DirName(exe) + L";" + std::wstring(inheritedPath, pathLength);
+    request.environment[L"PATH"] = PathWithExecutableDirectory(exe);
     auto executed = execution::Run(request);
     RunResult result;
+    result.task=executed.task;result.queuedMs=executed.queuedMs;result.cwd=executed.cwd;
     result.ok = executed.started;
     result.reason = executed.reason;
     result.timedOut = executed.reason == execution::Reason::TimedOut;
@@ -264,7 +270,7 @@ RunResult RunProcess(const std::wstring& exe,
         result.err += "\n[执行] " + result.error + "\n";
     }
     // Logs are bounded by the execution limit rather than unbounded file redirection.
-    if (!WriteFileU8(outFile, result.out) || !WriteFileU8(errFile, result.err)) {
+    if ((!outFile.empty()&&!WriteFileU8(outFile, result.out)) || (!errFile.empty()&&!WriteFileU8(errFile, result.err))) {
         result.error += " 无法保存执行日志";
         result.reason = execution::Reason::IoError;
         result.exitCode = -1;

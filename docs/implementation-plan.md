@@ -51,7 +51,7 @@
 
 `UI -> TaskCoordinator -> ExecutionService -> WindowsProcessBackend`。编译、运行、测试、对拍、GDB 及插件进程复用任务和执行基础设施，避免继续复制进程代码。
 
-当前 execution::Run 已承接 Windows 执行后端与进程工具调用；TaskCoordinator、持久任务 ID、任务归档和上层测试/调试接口仍是后续工作，不能视为已完成整个模型。
+0.3.7 的 execution::Run 已承接任务 ID、独立目录、具名跨实例并发名额、排队取消及持久状态；测试/GDB/新版服务共用后端。详见 [任务调度](task-coordinator.md)。尚缺父任务依赖图、严格公平队列、总内存/磁盘预算及跨安装目录统一记录视图，不能视为已完成整个模型。
 
 ### 3.1 执行输入与结果
 

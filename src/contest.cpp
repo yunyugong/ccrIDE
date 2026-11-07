@@ -52,11 +52,11 @@ void Runner::Start(Config config){
     auto snapshot=root/(role+".cpp.snapshot");
     metadata["programs"].push_back({{"role",role},{"source",utils::WToU8(source)},{"snapshot",snapshot.filename().string()},{"sha256",utils::Sha256Hex(code)}});
     write(root/"run.json",metadata.dump(2));
-    auto exe=root/(role+".exe");execution::Request q;q.exe=config.compiler;q.cwd=fs::path(source).parent_path().wstring();q.args=config.flags;q.args.insert(q.args.end(),{L"-x",L"c++",snapshot.wstring(),L"-x",L"none",L"-iquote",fs::path(source).parent_path().wstring(),L"-o",exe.wstring()});q.cancel=&cancel;q.limits={120000,0,4*1024*1024};
+    auto exe=root/(role+".exe");execution::Request q;q.label="测试编译 "+role;q.logOutput=false;q.exe=config.compiler;q.environment[L"PATH"]=utils::PathWithExecutableDirectory(config.compiler);q.cwd=fs::path(source).parent_path().wstring();q.args=config.flags;q.args.insert(q.args.end(),{L"-x",L"c++",snapshot.wstring(),L"-x",L"none",L"-iquote",fs::path(source).parent_path().wstring(),L"-o",exe.wstring()});q.cancel=&cancel;q.limits={120000,0,4*1024*1024};
     json argv=json::array();for(auto& arg:q.args)argv.push_back(utils::WToU8(arg));
     metadata["programs"].back()["arguments"]=argv;metadata["programs"].back()["cwd"]=utils::WToU8(q.cwd);
     write(root/"run.json",metadata.dump(2));
-    auto c=execution::Run(q);metadata["programs"].back()["started"]=c.started;metadata["programs"].back()["exitCode"]=c.exitCode;metadata["programs"].back()["reason"]=int(c.reason);write(root/(role+"-compile.log"),c.out+c.err);
+    auto c=execution::Run(q);if(c.reason==execution::Reason::Cancelled)cancel=true;metadata["programs"].back()["taskId"]=c.task.id;metadata["programs"].back()["taskDirectory"]=utils::WToU8(c.task.directory);metadata["programs"].back()["queuedMs"]=c.queuedMs;metadata["programs"].back()["started"]=c.started;metadata["programs"].back()["exitCode"]=c.exitCode;metadata["programs"].back()["reason"]=int(c.reason);write(root/(role+"-compile.log"),c.out+c.err);
     if(c.reason!=execution::Reason::Exited||c.exitCode||!c.started){auto failure=ProcessResult(role,c);failure.verdict=c.reason==execution::Reason::Cancelled?"取消":!c.started?"编译器启动失败":c.reason==execution::Reason::TimedOut?"编译超时":"CE";results.push_back(std::move(failure));throw std::runtime_error(role+" 编译未成功");}
     std::error_code sizeError;auto bytes=fs::file_size(exe,sizeError);
     if(sizeError)throw std::runtime_error(role+" 未生成可执行文件");
@@ -66,9 +66,9 @@ void Runner::Start(Config config){
    auto sol=compile(config.solution,"solution");fs::path ref,gen;if(config.stress){ref=compile(config.reference,"reference");gen=compile(config.generator,"generator");}
    metadata["status"]="running";write(root/"run.json",metadata.dump(2));
    auto run=[&](const fs::path& exe,const std::string& input,std::vector<std::wstring> args=std::vector<std::wstring>{}){
-    execution::Request q;q.exe=exe.wstring();q.cwd=fs::path(config.solution).parent_path().wstring();q.input=input;q.args=std::move(args);q.cancel=&cancel;q.limits=config.limits;
-    auto process=execution::Run(q);json argv=json::array();for(auto& arg:q.args)argv.push_back(utils::WToU8(arg));
-    traces.push_back({{"role",exe.stem().string()},{"exe",utils::WToU8(q.exe)},{"cwd",utils::WToU8(q.cwd)},{"arguments",argv},{"started",process.started},{"exitCode",process.exitCode},{"reason",int(process.reason)},{"reasonText",execution::ReasonText(process.reason)},{"elapsedMs",process.elapsedMs},{"peakMemoryBytes",process.peakMemoryBytes}});return process;
+    execution::Request q;q.label="测试 "+exe.stem().string();q.logOutput=false;q.isolateWorkingDirectory=config.isolatedWorkingDirectory;q.exe=exe.wstring();q.environment[L"PATH"]=utils::PathWithExecutableDirectory(config.compiler);q.cwd=fs::path(config.solution).parent_path().wstring();q.input=input;q.args=std::move(args);q.cancel=&cancel;q.limits=config.limits;
+    auto process=execution::Run(q);if(process.reason==execution::Reason::Cancelled)cancel=true;json argv=json::array();for(auto& arg:q.args)argv.push_back(utils::WToU8(arg));
+    traces.push_back({{"role",exe.stem().string()},{"exe",utils::WToU8(q.exe)},{"cwd",utils::WToU8(process.cwd)},{"taskId",process.task.id},{"taskDirectory",utils::WToU8(process.task.directory)},{"queuedMs",process.queuedMs},{"arguments",argv},{"started",process.started},{"exitCode",process.exitCode},{"reason",int(process.reason)},{"reasonText",execution::ReasonText(process.reason)},{"elapsedMs",process.elapsedMs},{"peakMemoryBytes",process.peakMemoryBytes}});return process;
    };
    int index=0;
    auto archiveCase=[&](const Result& result,const std::string& input,const std::string& expected,const std::string& referenceError="",const std::string& generatorError=""){

@@ -160,6 +160,7 @@ bool App::Init() {
         return false;
     }
     CloseHandle(writable);
+    SetEnvironmentVariableW(L"CCRIDE_TASK_ROOT",(dataDir+L"\\tasks").c_str());
     settingsPath = dataDir + L"\\settings.json";
     settings.Load(settingsPath);
     std::string artifactsJson;
@@ -662,19 +663,20 @@ void App::StartDiagCheck() {
     bool expected = false;
     if (!diagBusy.compare_exchange_strong(expected, true)) { diagPending = true; return; }
 
-    // 临时文件写到源文件同目录, 保证 quoted include 可用; 未命名文件写 dataDir
-    // 文件名带标签 uid: 多实例/多标签同目录时互不覆盖; 检查结束后删除, 不残留
+    // 任务目录内保存独立检查快照；-iquote 保持源码目录的 quoted include 查找。
     std::wstring dir = ed->HasPath() ? utils::DirName(ed->m_path) : dataDir;
-    std::wstring tmp = dir + L"\\.minicpp_syn_" + std::to_wstring(ed->m_uid) + L".cpp";
+    execution::Task task;std::string taskError;
+    if(!execution::CreateTask(task,taskError)){diagBusy.store(false);diagStatus=taskError;return;}
+    std::wstring tmp=task.directory+L"\\source.cpp";
     if (!utils::WriteFileU8(tmp, ed->m_text)) { diagBusy.store(false); diagStatus.clear(); return; }
 
     uint64_t rev = editRev;
     diagStatus = "检查中...";
     if (diagThread.joinable()) diagThread.join();
-    diagThread = std::thread([this, gpp, tmp, dir, rev]() {
-        std::wstring outF = dataDir + L"\\syn_out.txt", errF = dataDir + L"\\syn_err.txt";
-        auto r = utils::RunProcess(gpp, { tmp, L"-fsyntax-only", L"-std=c++17" },
-                                   dir, outF, errF, 30000, true, &shuttingDown);
+    diagThread = std::thread([this, gpp, tmp, dir, rev,task]() {
+        std::wstring outF,errF;
+        auto r = utils::RunProcess(gpp, { tmp, L"-fsyntax-only", L"-std=c++17",L"-iquote",dir },
+                                   dir, outF, errF, 30000, true, &shuttingDown,execution::Lane::Background,"语法检查",task);
         std::vector<Diag> diags = ParseDiags(r.out + "\n" + r.err, utils::WToU8(tmp));
         DeleteFileW(tmp.c_str());   // 检查结束即清理临时文件
         { std::lock_guard<std::mutex> lk(diagMutex); diagResults = std::move(diags); diagDoneRev = rev; diagAutomatic = true; }
@@ -751,6 +753,7 @@ static void RunInteractiveProc(execution::Request request) {
     request.capture = false;
     request.interactive = true;
     request.cancel = &g_app.killRequested;
+    request.onState=[](const execution::TaskInfo& info){if(info.state=="queued"||info.state=="running")g_app.QueueProcOutput("[任务 "+info.task.id+"] "+(info.state=="queued"?"等待运行名额":"开始运行")+"\n[工作目录] "+utils::WToU8(info.cwd)+"\n",IM_COL32(140,180,255,255),true);};
     request.onOutput = [](const std::string& text, bool isErr) {
         g_app.QueueProcOutput(text, isErr ? IM_COL32(255,220,120,255) : IM_COL32(230,230,230,255), true);
     };
@@ -893,7 +896,7 @@ void App::StartCompileRun(BuildAction action) {
     }
 
     execution::Request runRequest;
-    runRequest.exe = exePath;
+    runRequest.exe = exePath;runRequest.label="运行";runRequest.isolateWorkingDirectory=settings.isolatedRunDirectory&&settings.runDirectory.empty();
     runRequest.cwd = settings.runDirectory.empty() ? dir : utils::U8ToW(settings.runDirectory);
     runRequest.limits.timeMs = (DWORD)std::clamp(settings.runTimeLimitMs, 100, 3600000);
     runRequest.limits.memoryBytes = (size_t)std::clamp(settings.runMemoryLimitMB, 0, 16384) * 1024 * 1024;
@@ -937,9 +940,8 @@ void App::StartCompileRun(BuildAction action) {
     std::wstring debugInput;
     if(action==BuildAction::Debug) {
         if(GetFileAttributesW(gdb.c_str())==INVALID_FILE_ATTRIBUTES) { console.Append("[调试] 找不到 GDB，请在设置中指定路径\n",IM_COL32(255,120,120,255)); return; }
-        debugInput=settings.debugInputFile.empty() ? dataDir+L"\\debug-empty-input.txt" : utils::U8ToW(settings.debugInputFile);
-        if(settings.debugInputFile.empty()) utils::WriteFileU8(debugInput,"");
-        if(GetFileAttributesW(debugInput.c_str())==INVALID_FILE_ATTRIBUTES) { console.Append("[调试] 输入文件不存在\n",IM_COL32(255,120,120,255)); return; }
+        debugInput=utils::U8ToW(settings.debugInputFile);
+        if(!debugInput.empty()&&GetFileAttributesW(debugInput.c_str())==INVALID_FILE_ATTRIBUTES) { console.Append("[调试] 输入文件不存在\n",IM_COL32(255,120,120,255)); return; }
     }
 
     if(action==BuildAction::Run) {
@@ -1007,10 +1009,11 @@ void App::StartCompileRun(BuildAction action) {
             for (const auto& output : outs) QueueProcOutput(output.text, output.color);
             outs.clear();
         };
-        std::wstring outF = dataDir + L"\\build_out.txt";
-        std::wstring errF = dataDir + L"\\build_err.txt";
+        std::wstring outF;
+        std::wstring errF;
 
         auto r = utils::RunProcess(exeCmd, runArgs, dir, outF, errF, compileTimeout, true, &killRequested);
+        add("[任务] "+r.task.id+" [记录目录] "+utils::WToU8(r.task.directory)+"\n",IM_COL32(140,180,255,255));
         add("[编译] " + std::string(execution::ReasonText(r.reason)) + "，耗时 " + std::to_string(r.elapsedMs) + " ms\n", IM_COL32(160,180,200,255));
         if (!r.out.empty()) add(r.out, IM_COL32(230,230,230,255));
         if (!r.ok) {

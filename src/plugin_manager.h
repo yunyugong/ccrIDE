@@ -26,6 +26,7 @@ struct PluginInfo {
 };
 
 struct MarketItem {          // 市场条目 (随附 + 远程)
+    unsigned int taskCoordinatorVersion = 0;
     std::string id, name, version, author, description, entry, dllUrl;
     std::string sha256;      // DLL 摘要 (可选, 安装时校验完整性)
     unsigned int apiVersion = 1;
