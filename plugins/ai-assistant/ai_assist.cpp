@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include "utils.h"
+#include "service_client.h"
 #include "ui_helpers.h"
 #include <imgui.h>
 #include <nlohmann/json.hpp>
@@ -46,18 +47,11 @@ static void Flow(const char* nextLabel,float width=0) {
 }
 
 
-// 流式回调: user = AIState*, 把增量文本 append 到 result
-static bool StreamChunkCb(void* user, const char* text, size_t len, bool done) {
-    AIState* ai = (AIState*)user;
-    if (ai->stopRequested.load()) return false;  // 提前中止
-    if (len > 0) {
-        std::lock_guard<std::mutex> lk(ai->mtx);
-        ai->result.append(text, len);
-    }
-    if (done) {
-        ai->streaming.store(false);
-    }
-    return true;
+static std::wstring ServiceExecutable() {
+    static int moduleMarker;HMODULE module=nullptr;wchar_t path[32768]{};
+    if(!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,reinterpret_cast<LPCWSTR>(&moduleMarker),&module))return {};
+    DWORD n=GetModuleFileNameW(module,path,32768);if(!n || n==32768)return {};
+    return (std::filesystem::path(path).parent_path()/L"ai-service.exe").wstring();
 }
 
 void AIState::Send(const std::string& userPrompt, const std::string& selectedCode) {
@@ -86,10 +80,6 @@ void AIState::Send(const std::string& userPrompt, const std::string& selectedCod
             streaming.store(false);
             return;
         }
-        std::string b2 = base;
-        if (b2.back() == '/') b2.pop_back();
-        std::string url = b2 + "/chat/completions";
-
         std::string content = userPrompt;
         if (!selectedCode.empty()) {
             content += "\n\n选中代码:\n```cpp\n" + selectedCode + "\n```";
@@ -117,41 +107,15 @@ void AIState::Send(const std::string& userPrompt, const std::string& selectedCod
         // 最终实际发送给 API 的 user content (带选中代码), 用于写入 history
         std::string finalUserContent = content;
 
-        std::string resp, errMsg;
-        bool ok;
+        streaming.store(doStream);
+        auto reply=service::Call(ServiceExecutable(),"chat",json{{"baseUrl",base},{"apiKey",key},{"body",body}},stopRequested,[this](const std::string& text){
+            std::lock_guard<std::mutex> lock(mtx);result+=text;
+        });
         std::string finalResult;
-        if (doStream) {
-            streaming.store(true);
-            ok = utils::HttpPostJsonStream(url, body.dump(), key, errMsg, &StreamChunkCb, this);
-            {
-                std::lock_guard<std::mutex> lk(mtx);
-                finalResult = result;
-                if (!ok) {
-                    if (error.empty() && !errMsg.empty()) {
-                        error = "流式请求失败: " + errMsg + " (尝试关闭流式再试)";
-                    }
-                }
-            }
-        } else {
-            streaming.store(false);
-            ok = utils::HttpPostJson(url, body.dump(), key, resp, errMsg);
-            std::lock_guard<std::mutex> lk(mtx);
-            if (ok) {
-                try {
-                    auto j = json::parse(resp);
-                    if (j.contains("error")) {
-                        error = j["error"].value("message", "未知错误");
-                    } else {
-                        result = j["choices"][0]["message"]["content"].get<std::string>();
-                        if (result.empty()) result = "(空回复)";
-                        finalResult = result;
-                    }
-                } catch (...) {
-                    error = "响应解析失败: " + resp.substr(0, 200);
-                }
-            } else {
-                error = "请求失败: " + errMsg;
-            }
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            if(!reply.ok)error=reply.error;
+            else finalResult=result;
         }
 
         // 成功且无错误 -> 把本轮 user + assistant 写入 history
@@ -193,31 +157,16 @@ void AIState::Shutdown() {
 
 void AIState::TestConnection() {
     if (busy.exchange(true)) return;
-    // 主线程快照 baseUrl, worker 不直接读共享设置
-    std::string base = settings.baseUrl,key=settings.apiKey;
-    if (worker.joinable()) worker.join();
-    worker = std::thread([this, base,key]() {
-        if (base.empty()) { std::lock_guard<std::mutex> lk(mtx); error = "baseUrl 为空"; busy.store(false); return; }
-        std::string b2 = base;
-        if (b2.back() == '/') b2.pop_back();
-        std::string resp, errMsg;
-        bool ok = utils::HttpGet(b2 + "/models", resp, errMsg,key);
-        std::lock_guard<std::mutex> lk(mtx);
-        if (ok) {
-            try {
-                auto j = json::parse(resp);
-                std::string names;
-                for (auto& m : j["data"]) { names += m.value("id", "") + "  "; }
-                result = "连接成功, 可用模型: " + names;
-                error.clear();
-            } catch (...) {
-                result.clear();
-                error = "响应异常: " + resp.substr(0, 200);
-            }
-        } else {
-            error = "连接失败: " + errMsg;
-        }
-        busy.store(false);
+    std::string base=settings.baseUrl,key=settings.apiKey;
+    if(worker.joinable())worker.join();
+    stopRequested=false;
+    {std::lock_guard<std::mutex> lock(mtx);result.clear();error.clear();}
+    worker=std::thread([this,base,key](){
+        auto reply=service::Call(ServiceExecutable(),"models",json{{"baseUrl",base},{"apiKey",key}},stopRequested,[this](const std::string& text){
+            std::lock_guard<std::mutex> lock(mtx);result+=text;
+        },30000);
+        if(!reply.ok){std::lock_guard<std::mutex> lock(mtx);error=reply.error;}
+        busy=false;
     });
 }
 

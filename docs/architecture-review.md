@@ -8,7 +8,7 @@ ccrIDE 是 Windows 上轻量、单文件优先的 C++ IDE。高级调试、测�
 
 ## A. 插件加载与隔离
 
-外部 DLL 的 Plugin_OnLoadV2、Plugin_OnFrame、Plugin_OnUnload 都在 IDE 进程内运行，共享 ImGui 上下文。AI 的网络请求在后台线程执行，只改善响应性，不构成故障或权限隔离。注释插件同样在进程内。插件崩溃、内存损坏、死循环仍可能影响整个 IDE。
+外部 DLL 的 Plugin_OnLoadV2、Plugin_OnFrame、Plugin_OnUnload 都在 IDE 进程内运行，共享 ImGui 上下文。AI 1.1.0 的网络请求与接口响应解析已迁到独立服务进程，完成取消、超时和服务故障检查；UI DLL 和客户端协议验证仍在主进程。这不构成所有插件的隔离或权限沙箱。详见 [第一阶段实现与限制](process-services.md)。注释插件同样在进程内。插件崩溃、内存损坏、死循环仍可能影响整个 IDE。
 
 后续采用混合架构：可信的简单 UI 扩展可在进程内；语言服务器、AI 服务、编译分析与第三方服务使用独立进程。宿主绘制 UI，通过结构化消息获取结果。权限限制需另行设计与验证，独立进程和 Windows Job 都不能直接等同于安全沙箱。
 

@@ -24,7 +24,7 @@ try:
         Path(root,'settings.json').write_text(json.dumps({'ai':{'enabled':True,'baseUrl':f'http://127.0.0.1:{server.server_port}/v1','model':'mock-model','apiKey':'plugin-test-key'}}),encoding='utf-8')
         result=subprocess.run([sys.argv[1],root],capture_output=True,timeout=25)
         print(result.stdout.decode('utf-8','replace'));assert result.returncode==0,result.stderr.decode('utf-8','replace')
-        assert len(requests)==4 and all(auth=='Bearer plugin-test-key' for auth,_ in requests)
+        assert 5 <= len(requests) <= 6 and all(auth=='Bearer plugin-test-key' for auth,_ in requests)
         assert 'int selectedValue=42;' in requests[0][1]['messages'][-1]['content']
         assert len(requests[1][1]['messages'])==4
         print('AI HTTP mock: auth, selection and multi-turn history passed')

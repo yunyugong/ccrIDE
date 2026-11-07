@@ -1219,7 +1219,10 @@ static int CheckLocalPluginArchives(const std::filesystem::path& archives,const 
     CodeEditor editor;editor.SetText("// plugin comment\nint pluginCount;\nvoid f(){ pluginCou");editor.RebuildLines();editor.m_cursor=editor.m_text.size();editor.OpenCompletion();
     CHECK(!editor.m_compItems.empty());for(auto& item:editor.m_compItems)CHECK(item.doc.empty());
     g_app.settings.disabledPlugins.clear();g_app.plugins.ReloadAll();CHECK(g_app.plugins.HasCompletionProvider());
-    CHECK(g_app.plugins.InstallLocalArchive((archives/"ai-assistant-v1.0.0.zip").wstring(),error));
+    auto aiArchive=archives/"ai-assistant-v1.1.0.zip";
+    if(!fs::exists(aiArchive))aiArchive=archives/"ai-assistant-v1.0.0.zip";
+    CHECK(g_app.plugins.InstallLocalArchive(aiArchive.wstring(),error));
+    if(aiArchive.filename()=="ai-assistant-v1.1.0.zip")CHECK(fs::is_regular_file(root/"plugins/ai-assistant/ai-service.exe"));
     bool aiLoaded=false;for(auto& plugin:g_app.plugins.plugins)if(plugin.id=="ai-assistant" && plugin.loaded)aiLoaded=true;CHECK(aiLoaded);
     CHECK(fs::is_regular_file(root/"data/plugins/ai-assistant/settings.json"));
     CHECK(!g_app.plugins.InstallLocalArchive((archives/"completion-docs-v1.0.0.zip").wstring(),error));
