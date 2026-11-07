@@ -13,7 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--stage', required=True)
 parser.add_argument('--output', required=True)
 parser.add_argument('--settings', required=True)
-parser.add_argument('--version', default='0.3.7')
+parser.add_argument('--version', default='0.3.7.1')
 parser.add_argument('--exe')
 parser.add_argument('--compiler', required=True, help='MinGW-w64 root directory containing bin/g++.exe')
 parser.add_argument('--dependencies', default=str(Path(__file__).resolve().parents[1]/'dependencies'))
@@ -77,7 +77,7 @@ shutil.copy2(deps / 'glfw/LICENSE.md', licenses / 'glfw-LICENSE.md')
 shutil.copy2(repo / 'packaging/licenses/json-LICENSE.MIT', licenses / 'json-LICENSE.MIT')
 (licenses / 'zlib-LICENSE.txt').write_text((gcc/'x86_64-w64-mingw32/include/zlib.h').read_text(encoding='utf-8').split('*/',1)[0]+'*/\n',encoding='utf-8')
 (licenses / 'README.txt').write_text('GCC / MinGW / GDB and bundled tools: see toolchain/mingw64/licenses and build-info.txt.\nThe installer is ccrIDE native code; ZIP decompression uses zlib.\n', encoding='utf-8')
-(bundle / '使用说明.txt').write_text('''ccrIDE v0.3.7 + GCC 11.5 / Windows x64 离线便携包
+(bundle / '使用说明.txt').write_text('''ccrIDE v0.3.7.1 + GCC 11.5 / Windows x64 离线便携包
 
 1. 将整个 ccrIDE 文件夹解压到个人可写目录；不要在压缩包内直接运行。
 2. 双击 ccrIDE-v*.exe，新建或打开 .cpp。F10 编译，F11 编译并运行，F12 运行最近一次成功编译的程序。
@@ -94,6 +94,8 @@ shutil.copy2(repo / 'packaging/licenses/json-LICENSE.MIT', licenses / 'json-LICE
 13. 全标签恢复快照每 3 秒保存，启动后可选择恢复副本，不直接覆盖源码。
 14. 运行菜单 → 任务管理可查看任务 ID、排队状态、工作目录及独立日志，并停止指定任务。默认每次运行使用独立目录；需要读取源码旁文件时可在设置中关闭或指定运行目录。
 15. 编辑菜单的符号重命名需要 clangd 1.2.0 插件；请求预览并应用后自行保存。
+
+16. 设置支持搜索；编辑习惯、补全触发、行距、相对行号、界面疏密和恢复间隔均可调整。“备份与偏好”中可导入/导出偏好及恢复默认；偏好文件不含工具链路径、运行环境或插件凭据。
 
 EXE 是项目自编写的 Windows 离线安装程序：选择安装目录并点击安装。无需联网，不使用通用 SFX 外壳。
 ZIP 与 EXE 包含相同的程序文件。更新或重新解压请选新目录，避免覆盖已有 data 设置。

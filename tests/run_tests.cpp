@@ -538,6 +538,91 @@ static void TestSettingsRoundTrip() {
     DeleteFileW(path.c_str());
 }
 
+static void TestCustomization(){
+    namespace fs=std::filesystem;
+    auto root=fs::temp_directory_path()/(L"ccride-preferences-中文 "+std::to_wstring(GetCurrentProcessId()));
+    fs::create_directories(root);auto file=(root/"preferences.json").wstring();std::string error;
+    Settings prefs;prefs.tabWidth=2;prefs.insertSpaces=false;prefs.autoIndent=false;prefs.autoCloseBrackets=false;
+    prefs.autoCompletion=false;prefs.completionMinChars=3;prefs.completionRows=14;prefs.completionWidth=900;
+    prefs.autoCheckDelayMs=2200;prefs.lineHeightPercent=160;prefs.scrollLines=8;
+    prefs.showLineNumbers=false;prefs.relativeLineNumbers=true;prefs.highlightCurrentLine=false;
+    prefs.highlightWordOccurrences=false;prefs.showChangeMarkers=false;prefs.caretBlink=false;
+    prefs.uiFontSize=20;prefs.uiDensity=2;prefs.cornerRadius=9;prefs.scrollbarSize=18;
+    prefs.recoveryIntervalSec=20;prefs.showToolbar=false;prefs.showStatusBar=false;prefs.showActivityBar=false;
+    prefs.hotkeys["save"]="Ctrl+Alt+S";prefs.editorColors["dark/Selection"]=IM_COL32(1,2,3,255);
+    prefs.gppPath="PRIVATE_COMPILER";prefs.runEnvironment="PRIVATE_KEY=secret";
+    CHECK(prefs.Save((root/"settings.json").wstring()));
+    CHECK(!prefs.Save((root/"missing/settings.json").wstring()));
+    Settings loaded;CHECK(loaded.Load((root/"settings.json").wstring()));
+    CHECK(loaded.tabWidth==2&&!loaded.insertSpaces&&!loaded.autoIndent&&!loaded.autoCloseBrackets);
+    CHECK(!loaded.autoCompletion&&loaded.completionMinChars==3&&loaded.completionRows==14&&loaded.completionWidth==900);
+    CHECK(loaded.autoCheckDelayMs==2200&&loaded.lineHeightPercent==160&&loaded.scrollLines==8);
+    CHECK(!loaded.showLineNumbers&&loaded.relativeLineNumbers&&!loaded.highlightCurrentLine&&!loaded.highlightWordOccurrences);
+    CHECK(!loaded.showChangeMarkers&&!loaded.caretBlink&&loaded.uiFontSize==20&&loaded.uiDensity==2);
+    CHECK(loaded.cornerRadius==9&&loaded.scrollbarSize==18&&loaded.recoveryIntervalSec==20);
+    CHECK(!loaded.showToolbar&&!loaded.showStatusBar&&!loaded.showActivityBar);
+    CHECK(prefs.ExportPreferences(file,error));std::string text;CHECK(utils::ReadFileU8(file,text));
+    CHECK(text.find("PRIVATE_")==std::string::npos&&text.find("secret")==std::string::npos);
+    auto exported=nlohmann::json::parse(text);CHECK(exported["preferences"].size()==37);
+    Settings imported;imported.gppPath="keep-toolchain";imported.runEnvironment="KEEP=value";imported.runTimeLimitMs=1234;
+    imported.disabledPlugins={"keep-plugin"};CHECK(imported.ImportPreferences(file,error));
+    CHECK(imported.tabWidth==2&&imported.hotkeys==prefs.hotkeys&&imported.editorColors==prefs.editorColors);
+    CHECK(imported.gppPath=="keep-toolchain"&&imported.runEnvironment=="KEEP=value"&&imported.runTimeLimitMs==1234);
+    CHECK(imported.disabledPlugins==std::vector<std::string>{"keep-plugin"});
+    auto invalid=exported;invalid["preferences"]["theme"]="light";invalid["preferences"]["tabWidth"]="oops";
+    utils::WriteFileU8(file,invalid.dump());CHECK(!imported.ImportPreferences(file,error));
+    CHECK(imported.theme=="dark"&&imported.tabWidth==2&&!error.empty());
+    invalid=exported;invalid["preferences"]["editorColors"]["bad"]=-1;utils::WriteFileU8(file,invalid.dump());
+    CHECK(!imported.ImportPreferences(file,error));CHECK(imported.editorColors==prefs.editorColors);
+    invalid=exported;invalid["preferences"]["tabWidth"]=999;invalid["preferences"]["uiFontSize"]=-5;
+    invalid["preferences"]["recoveryIntervalSec"]=0;utils::WriteFileU8(file,invalid.dump());
+    CHECK(imported.ImportPreferences(file,error));CHECK(imported.tabWidth==8&&imported.uiFontSize==12&&imported.recoveryIntervalSec==1);
+    utils::WriteFileU8(file,"{}");CHECK(!imported.ImportPreferences(file,error));
+    utils::WriteFileU8(file,"{bad");CHECK(!imported.ImportPreferences(file,error));
+    utils::WriteFileU8(file,std::string(1024*1024+1,'x'));CHECK(!imported.ImportPreferences(file,error));
+    imported.ResetPreferences();CHECK(imported.tabWidth==4&&imported.insertSpaces&&imported.autoCompletion&&imported.uiFontSize==15);
+    CHECK(imported.hotkeys.empty()&&imported.editorColors.empty());
+    CHECK(imported.gppPath=="keep-toolchain"&&imported.runEnvironment=="KEEP=value"&&imported.runTimeLimitMs==1234);
+    Settings legacy;utils::WriteFileU8(file,"{}");CHECK(legacy.Load(file));CHECK(legacy.tabWidth==4&&legacy.recoveryIntervalSec==3&&legacy.showToolbar);
+    fs::remove_all(root);
+    auto saved=g_app.settings;g_app.settings=Settings{};
+    ImGui::CreateContext();auto& io=ImGui::GetIO();io.Fonts->AddFontDefault();io.Fonts->Build();
+    io.DisplaySize=ImVec2(640,480);io.DeltaTime=1.0f/60;ImGui::NewFrame();
+    CodeEditor ed;
+    auto setup=[&](const std::string& value,size_t cursor=std::string::npos){ed.SetText(value);ed.RebuildLines();ed.m_cursor=ed.m_selAnchor=cursor==std::string::npos?value.size():cursor;ed.m_selActive=false;};
+    g_app.settings.tabWidth=2;setup("a");ed.DoTab();CHECK_EQ(ed.m_text,std::string("a "));
+    setup("{}" ,1);ed.DoEnter();CHECK_EQ(ed.m_text,std::string("{\n  \n}"));CHECK(ed.m_cursor==4);
+    setup("  \t{");ed.DoEnter();CHECK_EQ(ed.m_text,std::string("  \t{\n      "));
+    setup("  ");ed.DoBackspace();CHECK(ed.m_text.empty());
+    g_app.settings.insertSpaces=false;setup("");ed.DoTab();CHECK_EQ(ed.m_text,std::string("\t"));
+    setup("{}" ,1);ed.DoEnter();CHECK_EQ(ed.m_text,std::string("{\n\t\n}"));
+    setup("\t");ed.DoBackspace();CHECK(ed.m_text.empty());
+    g_app.settings.autoIndent=false;setup("\t{");ed.DoEnter();CHECK_EQ(ed.m_text,std::string("\t{\n"));
+    g_app.settings.autoCloseBrackets=false;setup("");ed.DoAutoBracket('(');CHECK_EQ(ed.m_text,std::string("("));
+    setup("()",1);ed.DoBackspace();CHECK_EQ(ed.m_text,std::string(")"));
+    g_app.settings.autoCloseBrackets=true;setup("");ed.DoAutoBracket('(');CHECK_EQ(ed.m_text,std::string("()"));CHECK(ed.m_cursor==1);
+    for(int width:{2,4,8}){
+        g_app.settings.tabWidth=width;setup("\tx\nab\tz");
+        CHECK(ed.VisualCol(1)==size_t(width));CHECK(ed.PosAtLineCol(0,width)==1);
+        CHECK(std::abs(ed.CharX(1)-ed.CharW()*width)<.1f);
+        CHECK(ed.HitTest(ed.CharW()*width+.1f,ed.LineH()*.5f)==1);
+        ed.RebuildDecorations();CHECK(ed.m_indentColumns[0]==width);
+    }
+    g_app.settings.tabWidth=2;ed.RebuildDecorations();CHECK(ed.m_indentColumns[0]==2);
+    g_app.settings.autoIndent=true;g_app.settings.insertSpaces=true;setup("a\nab");
+    ed.m_carets={{1,1},{4,4}};ed.MultiIndent(false);CHECK_EQ(ed.m_text,std::string("a \nab  "));
+    ed.Undo();CHECK_EQ(ed.m_text,std::string("a\nab"));
+    setup("  {\n  x");ed.m_carets={{3,3},{7,7}};ed.MultiIndent(true);CHECK_EQ(ed.m_text,std::string("  {\n    \n  x\n  "));
+    ed.Undo();CHECK_EQ(ed.m_text,std::string("  {\n  x"));
+    g_app.settings.completionMinChars=3;setup("st");CHECK(!ed.ShouldAutoComplete());setup("std");CHECK(ed.ShouldAutoComplete());
+    setup("std::");CHECK(ed.ShouldAutoComplete());setup("value.");CHECK(ed.ShouldAutoComplete());
+    g_app.settings.autoCompletion=false;CHECK(!ed.ShouldAutoComplete());setup("void f(){ ret");ed.OpenCompletion();CHECK(ed.m_compOpen);
+    g_app.settings.codeCompletion=false;ed.OpenCompletion();CHECK(!ed.m_compOpen);
+    g_app.settings=Settings{};setup("x");float original=ed.LineH();g_app.settings.lineHeightPercent=180;CHECK(ed.LineH()>original);
+    auto normalGutter=ed.GutterW();g_app.settings.showLineNumbers=false;CHECK(ed.GutterW()<normalGutter);
+    g_app.settings=saved;ImGui::EndFrame();ImGui::DestroyContext();
+}
+
 static void TestIndependentEditorFeatures() {
     const Settings saved = g_app.settings;
     CodeEditor ed;
@@ -1445,6 +1530,7 @@ int main(int argc, char** argv) {
     TestFileCompletion();
     TestSymbolIndex();
     TestSettingsRoundTrip();
+    TestCustomization();
     TestIndependentEditorFeatures();
     TestProcStatusThreadSafe();
     TestCommentLinks();

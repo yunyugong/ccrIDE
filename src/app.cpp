@@ -86,7 +86,7 @@ void Console::DrawWindow(bool* open, bool terminalView) {
     ImVec2 bodySize = interact ? ImVec2(0, -64) : ImVec2(0, 0);
 
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
-    ImGui::PushFont(g_app.editorFont ? g_app.editorFont : ImGui::GetFont());
+    ImGui::PushFont(g_app.editorFont ? g_app.editorFont : ImGui::GetFont(),float(g_app.settings.fontSize));
     if (ImGui::BeginChild("##out_body", bodySize, false, ImGuiWindowFlags_HorizontalScrollbar)) {
         if (lines.empty()) ImGui::TextDisabled(terminalView ? "程序输出将显示在这里；运行时可在下方输入数据" : "构建日志将显示在这里 · F10 编译 / F11 编译并运行");
         for (auto& ln : lines) {
@@ -205,6 +205,7 @@ bool App::Init() {
 }
 
 void App::LoadFonts() {
+    settings.Normalize();
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->Clear();   // 重建 (字号变更) 时先清空
 
@@ -221,7 +222,7 @@ void App::LoadFonts() {
 
     uiFont = nullptr;
     if (!cjkFont.empty())
-        uiFont = io.Fonts->AddFontFromFileTTF(cjkFont.c_str(), 15.0f, nullptr,
+        uiFont = io.Fonts->AddFontFromFileTTF(cjkFont.c_str(), float(settings.uiFontSize), nullptr,
                                               io.Fonts->GetGlyphRangesChineseFull());
     if (!uiFont) uiFont = io.Fonts->AddFontDefault();
 
@@ -254,6 +255,7 @@ void App::LoadFonts() {
     if (!editorFont) editorFont = uiFont;
 
     io.FontDefault = uiFont;
+    ImGui::GetStyle().FontSizeBase=float(settings.uiFontSize);
     io.Fonts->Build();
 }
 
@@ -389,6 +391,17 @@ void App::ApplyTheme() {
     colors.diagErrMark = EditorColorValue(EditorColor::Error);
     colors.diagWarnMark = EditorColorValue(EditorColor::Warning);
     colors.bracketBg = EditorColorValue(EditorColor::BracketMatch);
+    float density=settings.uiDensity==0?0.72f:settings.uiDensity==2?1.25f:1.0f;
+    style.WindowPadding=ImVec2(12*density,10*density);
+    style.FramePadding=ImVec2(10*density,5*density);
+    style.ItemSpacing=ImVec2(8*density,6*density);
+    style.ItemInnerSpacing=ImVec2(6*density,4*density);
+    style.WindowRounding=style.FrameRounding=style.GrabRounding=float(settings.cornerRadius);
+    style.ChildRounding=std::min(float(settings.cornerRadius),3.0f);
+    style.PopupRounding=float(settings.cornerRadius);
+    style.TabRounding=std::min(float(settings.cornerRadius),2.0f);
+    style.ScrollbarSize=float(settings.scrollbarSize);
+
 
 }
 
@@ -648,7 +661,7 @@ void App::DiagTick(float dt) {
     if (!settings.autoCheck) { diagPending = false; return; }
     if (!diagPending || diagBusy.load()) return;
     diagTimer += dt;
-    if (diagTimer < 0.8f) return;
+    if (diagTimer < std::clamp(settings.autoCheckDelayMs,200,3000)/1000.0f) return;
     diagPending = false;
     diagTimer = 0;
     StartDiagCheck();
@@ -1154,14 +1167,16 @@ void App::ApplyRecovery(bool restore) {
     SaveRecovery();
 }
 void App::AutoSaveTick(float dt) {
-    autosaveTimer+=dt;if(autosaveTimer<3)return;autosaveTimer=0;
+    autosaveTimer+=dt;if(autosaveTimer<std::clamp(settings.recoveryIntervalSec,1,60))return;autosaveTimer=0;
     SaveSession();
 }
 
 void App::SaveSettings() {
-    settings.Save(settingsPath, portableMode ? executableDir : std::wstring());
-    ApplyTheme();
-    console.Append("[设置] 已保存到 " + utils::WToU8(settingsPath) + "\n", IM_COL32(140, 220, 150, 255));
+    settings.Normalize();
+    if(settings.Save(settingsPath, portableMode ? executableDir : std::wstring())){
+        ApplyTheme();
+        console.Append("[设置] 已保存到 " + utils::WToU8(settingsPath) + "\n", IM_COL32(140, 220, 150, 255));
+    }else console.Append("[设置] 保存失败，请检查设置目录的写入权限；当前会话的修改仍保留。\n",IM_COL32(240,100,80,255));
 }
 
 // ===================================================================

@@ -465,11 +465,12 @@ static void DrawMainMenuBar() {
 
 // ---------------- Workspace chrome ----------------
 static void DrawWorkspaceToolbar() {
+    if(!g_app.settings.showToolbar)return;
     ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10,7));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10,5));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4);
-    if (ImGui::BeginViewportSideBar("##workspace_toolbar", vp, ImGuiDir_Up, 42,
+    if (ImGui::BeginViewportSideBar("##workspace_toolbar", vp, ImGuiDir_Up, std::max(42.0f,ImGui::GetFrameHeight()+14.0f),
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings)) {
         using toolbar::Icon;
         const bool narrow = vp->Size.x < 1000;
@@ -555,6 +556,7 @@ static void DrawWorkspaceToolbar() {
 }
 
 static void DrawActivityBar() {
+    if(!g_app.settings.showActivityBar)return;
     auto* vp = ImGui::GetMainViewport();
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,ImVec2(4,8));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(0,6));
@@ -706,9 +708,10 @@ static void DrawEditorWindow() {
 
 // ---------------- Status bar ----------------
 static void DrawStatusBar() {
+    if(!g_app.settings.showStatusBar)return;
     ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14, 4));
-    if (ImGui::BeginViewportSideBar("##statusbar", vp, ImGuiDir_Down, 27,
+    if (ImGui::BeginViewportSideBar("##statusbar", vp, ImGuiDir_Down, std::max(27.0f,ImGui::GetTextLineHeight()+8.0f),
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings)) {
         CodeEditor* ed = g_app.ActiveEditor();
         const bool busy = g_app.procBusy.load();
@@ -733,14 +736,21 @@ static void DrawStatusBar() {
     ImGui::End(); ImGui::PopStyleVar();
 }
 
+static bool SettingsCheckbox(const char* label,bool* value){
+    float width=ImGui::CalcTextSize(label).x+ImGui::GetFrameHeight()+ImGui::GetStyle().ItemInnerSpacing.x;
+    if(width<=ImGui::GetContentRegionAvail().x)return ImGui::Checkbox(label,value);
+    std::string id=std::string("##")+label;
+    bool changed=ImGui::Checkbox(id.c_str(),value);ImGui::SameLine();
+    ImGui::TextWrapped("%s",label);return changed;
+}
 static void DrawEditorAppearanceSettings() {
     auto& settings = g_app.settings;
     ImGui::SeparatorText("编辑器配色与辅助线");
-    ImGui::Checkbox("彩虹括号", &settings.rainbowBrackets);
-    ImGui::Checkbox("缩进提示线", &settings.showIndentGuides);
-    ImGui::Checkbox("彩虹缩进线", &settings.rainbowIndentLines);
-    ImGui::Checkbox("彩虹填充缩进", &settings.rainbowIndentFill);
-    ImGui::Checkbox("显示空格与 Tab 标记", &settings.showWhitespace);
+    SettingsCheckbox("彩虹括号", &settings.rainbowBrackets);
+    SettingsCheckbox("缩进提示线", &settings.showIndentGuides);
+    SettingsCheckbox("彩虹缩进线", &settings.rainbowIndentLines);
+    SettingsCheckbox("彩虹填充缩进", &settings.rainbowIndentFill);
+    SettingsCheckbox("显示空格与 Tab 标记", &settings.showWhitespace);
     static int selected = (int)EditorColor::Selection;
     const auto& spec = EditorColorSpecs[selected];
     std::string name = std::string(spec.group) + " / " + spec.label;
@@ -786,6 +796,11 @@ static void DrawEditorAppearanceSettings() {
 }
 
 // ---------------- 设置窗口 ----------------
+static bool SettingsSlider(const char* label,int* value,int minimum,int maximum,const char* format="%d"){
+    return ImGui::SliderInt(label,value,minimum,maximum,format,ImGuiSliderFlags_AlwaysClamp);
+}
+static int g_settingsSection=0;
+static std::string g_settingsSearch;
 static void DrawSettingsWindow() {
     ImVec2 screen = ImGui::GetMainViewport()->WorkSize;
     ImGui::SetNextWindowSize(ImVec2(std::min(850.0f, std::max(340.0f, screen.x - 32)),
@@ -799,7 +814,7 @@ static void DrawSettingsWindow() {
     }
 
     auto field = [](const char* label) {
-        ImGui::TextUnformatted(label);
+        ImGui::TextWrapped("%s",label);
         ImGui::SetNextItemWidth(-FLT_MIN);
     };
     auto help = [](const char* text) {
@@ -807,23 +822,40 @@ static void DrawSettingsWindow() {
         ImGui::TextWrapped("%s", text);
         ImGui::PopStyleColor();
     };
-    static int section=0;
-    const char* sections[]={"编译器与构建","代码辅助","运行与调试","外观与颜色","插件","快捷键"};
+    int& section=g_settingsSection;
+    const char* sections[]={"编译器与构建","代码辅助","运行与调试","外观与颜色","插件","快捷键","编辑习惯","备份与偏好"};
+    const char* keywords[]={"编译器 构建 g++ 标准 优化 参数","代码辅助 补全 提示 检查 延迟 自动 语法高亮 字符 行数 宽度 停顿","运行 调试 资源 限制 目录 参数 环境 GDB",
+        "外观 颜色 字体 字号 行距 行号 高亮 光标 圆角 滚动条 工具栏 状态栏 活动栏 疏密 缩进 彩虹 括号 空格 Tab 字符串 注释 关键字 选择","插件 市场","快捷键 按键",
+        "编辑 缩进 Tab 空格 括号 自动配对 滚动 滚轮","备份 恢复 间隔 偏好 导入 导出 默认 预设"};
+    field("搜索设置");
+    if(ui::InputTextStd("##settings_search",g_settingsSearch)){g_hkRecAct.clear();g_hkRecording=false;}
+    auto matches=[&](int index){
+        if(g_settingsSearch.empty())return true;
+        auto lower=[](std::string value){for(char& c:value)if(c>='A'&&c<='Z')c=char(c-'A'+'a');return value;};
+        return lower(std::string(sections[index])+" "+keywords[index]).find(lower(g_settingsSearch))!=std::string::npos;
+    };
+    bool any=false;for(int i=0;i<8;++i)if(matches(i)){if(!matches(section))section=i;any=true;}
+
     float bodyHeight=ImGui::GetContentRegionAvail().y-ImGui::GetFrameHeightWithSpacing()-12;
     if(ImGui::GetWindowWidth()>=540) {
-        ImGui::BeginChild("##settings_categories",ImVec2(142,bodyHeight));
+        ImGui::BeginChild("##settings_categories",ImVec2(std::max(142.0f,ImGui::CalcTextSize("编译器与构建").x+24),bodyHeight));
         ImGui::TextDisabled("偏好设置"); ImGui::Spacing();
-        for(int i=0;i<6;++i) if(ImGui::Selectable(sections[i],section==i,0,ImVec2(0,30))) {
+        for(int i=0;i<8;++i) if(matches(i)&&ImGui::Selectable(sections[i],section==i,0,ImVec2(0,30))) {
             section=i; g_hkRecAct.clear(); g_hkRecording=false;
         }
         ImGui::EndChild(); ImGui::SameLine(0,16);
     } else {
         ImGui::SetNextItemWidth(-FLT_MIN);
-        if(ImGui::Combo("##settings_section",&section,sections,6)) { g_hkRecAct.clear(); g_hkRecording=false; }
+        if(ImGui::BeginCombo("##settings_section",sections[section])){
+            for(int i=0;i<8;++i)if(matches(i)&&ImGui::Selectable(sections[i],section==i)){section=i;g_hkRecAct.clear();g_hkRecording=false;}
+            ImGui::EndCombo();
+        }
         bodyHeight-=ImGui::GetFrameHeightWithSpacing();
     }
     ImGui::BeginChild("##settings_body", ImVec2(0,bodyHeight));
     ImGui::PushID(section);
+    if(!any)help("没有匹配的设置，请换一个关键词。");
+    if(any){
     if(section==0) {
     ImGui::SeparatorText("编译器");
     field("g++ 路径");
@@ -843,15 +875,21 @@ static void DrawSettingsWindow() {
     }
     if(section==1) {
     ImGui::SeparatorText("代码辅助");
-    if (ImGui::Checkbox("代码补全与参数提示", &g_app.settings.codeCompletion)) {
+    if (SettingsCheckbox("代码补全与参数提示", &g_app.settings.codeCompletion)) {
         if (!g_app.settings.codeCompletion) for (auto& ed : g_app.editors) {
             ed->CloseCompletion(); ed->CloseCalltip();
         }
     }
-    ImGui::Checkbox("语法高亮", &g_app.settings.syntaxHighlight);
-    if (ImGui::Checkbox("自动语法检查", &g_app.settings.autoCheck)) {
+    SettingsCheckbox("输入时自动弹出补全",&g_app.settings.autoCompletion);
+    field("普通单词补全的最少字符数");SettingsSlider("##completion_min",&g_app.settings.completionMinChars,1,4);
+    field("补全列表最多显示行数");SettingsSlider("##completion_rows",&g_app.settings.completionRows,4,16);
+    field("补全弹窗最大宽度（像素）");SettingsSlider("##completion_width",&g_app.settings.completionWidth,360,1000);
+    help("关闭自动弹出后仍可用 Ctrl+Space 手动补全；成员、命名空间和 include 补全不受最少字符数限制。");
+    SettingsCheckbox("语法高亮", &g_app.settings.syntaxHighlight);
+    if (SettingsCheckbox("自动语法检查", &g_app.settings.autoCheck)) {
         if (g_app.settings.autoCheck) g_app.MarkDiag();
     }
+    field("自动检查等待输入停顿（毫秒）");SettingsSlider("##check_delay",&g_app.settings.autoCheckDelayMs,200,3000);
     help("三个开关相互独立。关闭补全不影响高亮或检查；关闭高亮仍可导航、折叠和匹配括号。自动检查在输入停顿后运行，关闭后已启动的检查可完成，但不再应用其结果；编译错误仍会显示。");
 
     }
@@ -873,9 +911,9 @@ static void DrawSettingsWindow() {
         if (ol < 0 || ol > 5) ol = 1;
         field("优化级别");
     if (ImGui::Combo("##优化级别", &ol, opts, 6)) g_app.settings.optLevel = ol;
-        ImGui::Checkbox("警告 -Wall -Wextra", &g_app.settings.warnAll);
+        SettingsCheckbox("警告 -Wall -Wextra", &g_app.settings.warnAll);
         if (ImGui::GetWindowWidth() > 420) ImGui::SameLine();
-        ImGui::Checkbox("调试信息 -g", &g_app.settings.dbgFlag);
+        SettingsCheckbox("调试信息 -g", &g_app.settings.dbgFlag);
         help("实际命令: <g++ 路径> <源文件> <上面的选项> <附加编译参数> -o <exe>");
     } else {
         ImGui::TextWrapped("占位符: {gpp} 编译器  {file} 源文件  {exe} 输出程序  {dir} 所在目录  "
@@ -908,7 +946,7 @@ static void DrawSettingsWindow() {
     field("程序参数");
     ui::InputTextStd("##runArguments", g_app.settings.runArguments);
     help("按 Windows 参数规则解析，含空格的参数用双引号包住，空参数写作双引号对。");
-    ImGui::Checkbox("每次运行使用独立工作目录",&g_app.settings.isolatedRunDirectory);
+    SettingsCheckbox("每次运行使用独立工作目录",&g_app.settings.isolatedRunDirectory);
     field("指定运行目录（填写后优先使用；关闭隔离且留空时使用源码目录）");
     ui::InputTextStd("##runDirectory", g_app.settings.runDirectory);
     field("GDB 路径 (留空使用编译器目录中的 gdb.exe)");
@@ -930,11 +968,29 @@ static void DrawSettingsWindow() {
         g_app.ApplyTheme();
     }
     field("编辑器字号");
-    if (ImGui::SliderInt("##编辑器字号", &g_app.settings.fontSize, 12, 28)) {
+    if (SettingsSlider("##编辑器字号", &g_app.settings.fontSize, 12, 28)) {
         g_app.settings.fontSize = std::max(12, std::min(28, g_app.settings.fontSize));
         g_app.fontRebuildPending = true;   // 字体下一帧重建, 即时生效
     }
 
+    field("界面字号");
+    if(SettingsSlider("##ui_font",&g_app.settings.uiFontSize,12,22))g_app.fontRebuildPending=true;
+    bool appearance=false;
+    field("界面疏密");appearance|=ImGui::Combo("##density",&g_app.settings.uiDensity,"紧凑\0标准\0宽松\0");
+    field("窗口与控件圆角");appearance|=SettingsSlider("##rounding",&g_app.settings.cornerRadius,0,12);
+    field("界面滚动条宽度");appearance|=SettingsSlider("##scrollbar",&g_app.settings.scrollbarSize,8,24);
+    if(appearance)g_app.ApplyTheme();
+    field("编辑器行距（百分比）");SettingsSlider("##line_spacing",&g_app.settings.lineHeightPercent,110,180,"%d%%");
+    SettingsCheckbox("显示行号",&g_app.settings.showLineNumbers);
+    SettingsCheckbox("相对行号（当前行显示绝对行号）",&g_app.settings.relativeLineNumbers);
+    SettingsCheckbox("高亮当前行",&g_app.settings.highlightCurrentLine);
+    SettingsCheckbox("高亮相同单词",&g_app.settings.highlightWordOccurrences);
+    SettingsCheckbox("显示红绿修改标记",&g_app.settings.showChangeMarkers);
+    SettingsCheckbox("光标闪烁",&g_app.settings.caretBlink);
+    ImGui::SeparatorText("工作区");
+    SettingsCheckbox("显示顶部工具栏",&g_app.settings.showToolbar);
+    SettingsCheckbox("显示底部状态栏",&g_app.settings.showStatusBar);
+    SettingsCheckbox("显示左侧活动栏",&g_app.settings.showActivityBar);
     DrawEditorAppearanceSettings();
 
     }
@@ -952,7 +1008,7 @@ static void DrawSettingsWindow() {
     ImGui::Columns(2, "hkedit", false);
     for (auto& d : g_hkDefs) {
         bool isRec = (g_hkRecAct == d.action);
-        ImGui::TextUnformatted(d.label);
+        ImGui::TextWrapped("%s",d.label);
         ImGui::NextColumn();
         if (isRec) {
             ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f), "按新组合键...");
@@ -998,6 +1054,48 @@ static void DrawSettingsWindow() {
         g_hkRecording = false;
     }
 
+    }
+    if(section==6){
+        ImGui::SeparatorText("缩进与输入");
+        field("Tab 显示宽度与缩进列数");SettingsSlider("##tab_width",&g_app.settings.tabWidth,2,8);
+        SettingsCheckbox("按 Tab 插入空格（关闭后插入制表符）",&g_app.settings.insertSpaces);
+        SettingsCheckbox("回车时自动缩进",&g_app.settings.autoIndent);
+        SettingsCheckbox("自动配对括号与引号",&g_app.settings.autoCloseBrackets);
+        field("滚轮每格滚动行数");SettingsSlider("##scroll_lines",&g_app.settings.scrollLines,1,12);
+        help("缩进宽度同时用于 Tab 显示、鼠标定位、退格和多光标输入。设置只影响后续输入，现有代码保留原样。");
+    }
+    if(section==7){
+        static std::string message;
+        auto apply=[](){
+            g_app.settings.Normalize();g_app.ApplyTheme();g_app.fontRebuildPending=true;g_app.MarkDiag();
+            for(auto& editor:g_app.editors){editor->CloseCompletion();editor->CloseCalltip();editor->m_decorationDirty=true;editor->m_maxLineDirty=true;}
+        };
+        ImGui::SeparatorText("恢复备份");
+        field("全部标签恢复快照间隔（秒）");SettingsSlider("##recovery_interval",&g_app.settings.recoveryIntervalSec,1,60);
+        help("恢复快照不会自动覆盖源码。较长间隔可以减少写盘，也会扩大意外退出时可能丢失的编辑范围。");
+        ImGui::SeparatorText("快捷预设");
+        if(ImGui::Button("紧凑竞赛")){g_app.settings.fontSize=16;g_app.settings.uiFontSize=14;g_app.settings.uiDensity=0;g_app.settings.lineHeightPercent=115;apply();message="已应用紧凑预设；点击保存设置后保留。";}
+        if(ImGui::Button("舒适阅读")){g_app.settings.fontSize=20;g_app.settings.uiFontSize=17;g_app.settings.uiDensity=2;g_app.settings.lineHeightPercent=150;apply();message="已应用阅读预设；点击保存设置后保留。";}
+        help("预设仅调整字号、行距和界面疏密，保留配色、快捷键及工具链设置。");
+        ImGui::SeparatorText("导入与导出");
+        if(ImGui::Button("导出偏好 JSON")){
+            std::wstring path;std::string error;
+            if(utils::PreferencesFileDialog(true,g_app.dataDir,path)){
+                if(_wcsicmp(path.c_str(),g_app.settingsPath.c_str())==0)message="请选择单独的偏好文件，避免覆盖完整设置。";
+                else message=g_app.settings.ExportPreferences(path,error)?"偏好已导出。":error;
+            }
+        }
+        if(ImGui::Button("导入偏好 JSON")){
+            std::wstring path;std::string error;
+            if(utils::PreferencesFileDialog(false,g_app.dataDir,path)){
+                if(g_app.settings.ImportPreferences(path,error)){apply();message="偏好已导入；点击保存设置后保留。";}
+                else message=error;
+            }
+        }
+        if(ImGui::Button("恢复默认偏好")){g_app.settings.ResetPreferences();apply();message="编辑、界面与快捷键已恢复默认；工具链与运行配置保留。";}
+        help("偏好文件包含编辑、外观和快捷键，不导出编译器路径、运行环境或插件凭据。导入失败时保留当前设置。");
+        if(!message.empty())ImGui::TextWrapped("%s",message.c_str());
+    }
     }
     ImGui::PopID();
     ImGui::EndChild();
@@ -1255,7 +1353,7 @@ static void DrawSearchWindow() {
         ImGui::TextColored(ImVec4(0.6f, 0.8f, 1.0f, 1), "%s", status.c_str());
 
     ImGui::Separator();
-    ImGui::PushFont(g_app.editorFont ? g_app.editorFont : ImGui::GetFont());
+    ImGui::PushFont(g_app.editorFont ? g_app.editorFont : ImGui::GetFont(),float(g_app.settings.fontSize));
     ImVec2 avail = ImGui::GetContentRegionAvail();
     if (ImGui::BeginChild("##gsearch", avail, false,
                           ImGuiWindowFlags_HorizontalScrollbar)) {

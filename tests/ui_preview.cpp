@@ -280,6 +280,36 @@ int main(int argc, char** argv) {
             }
             glfwSwapBuffers(window);
         }
+        auto beforeCustom=g_app.settings;
+        for(int category=0;category<8;++category){
+            g_settingsSection=category;g_settingsSearch.clear();
+            for(int frame=0;frame<3;++frame){
+                ImGui_ImplOpenGL3_NewFrame();ImGui_ImplGlfw_NewFrame();ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(8,8));ImGui::SetWindowSize("设置",ImVec2(scenario==2?360:820,height-16));
+                DrawSettingsWindow();
+                auto* settings=ImGui::FindWindowByName("设置");
+                for(auto* child:ImGui::GetCurrentContext()->Windows)if(frame==2&&child->ParentWindow==settings&&child->ScrollMax.x>1){++failures;printf("FAIL custom settings horizontal overflow category %d scenario %d\n",category,scenario);}
+                ImGui::Render();glViewport(0,0,width,height);glClear(GL_COLOR_BUFFER_BIT);ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+                if(frame==2&&(category==3||category==6||category==7))SaveFrame(output/("preferences-"+std::to_string(category)+"-"+std::to_string(scenario)+".bmp"),width,height);
+            }
+        }
+        g_settingsSearch="自动配对";g_settingsSection=0;
+        ImGui_ImplOpenGL3_NewFrame();ImGui_ImplGlfw_NewFrame();ImGui::NewFrame();DrawSettingsWindow();ImGui::Render();
+        if(g_settingsSection!=6){++failures;printf("FAIL settings keyword navigation\n");}
+        g_settingsSearch.clear();g_settingsSection=3;
+        g_app.settings.uiFontSize=22;g_app.settings.uiDensity=2;
+        g_app.LoadFonts();ImGui_ImplOpenGL3_DestroyDeviceObjects();g_app.ApplyTheme();
+        for(int frame=0;frame<3;++frame){
+            ImGui_ImplOpenGL3_NewFrame();ImGui_ImplGlfw_NewFrame();ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(8,8));ImGui::SetWindowSize("设置",ImVec2(scenario==2?360:820,height-16));
+            DrawSettingsWindow();
+            auto* settings=ImGui::FindWindowByName("设置");
+            for(auto* child:ImGui::GetCurrentContext()->Windows)if(frame==2&&child->ParentWindow==settings&&child->ScrollMax.x>1){++failures;printf("FAIL large-font settings overflow scenario %d\n",scenario);}
+            ImGui::Render();glViewport(0,0,width,height);glClear(GL_COLOR_BUFFER_BIT);ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            if(frame==2)SaveFrame(output/("preferences-large-font-"+std::to_string(scenario)+".bmp"),width,height);
+        }
+        if(std::abs(ImGui::GetStyle().FontSizeBase-22)>0.1f){++failures;printf("FAIL UI font preference not applied\\n");}
+        g_app.settings=beforeCustom;g_app.LoadFonts();ImGui_ImplOpenGL3_DestroyDeviceObjects();g_app.ApplyTheme();g_settingsSection=0;
         g_app.settings.useCmdTemplate = false;
         g_app.showSettings = false;
         // Exercise native docking with actual ImGui mouse events: pull a bottom

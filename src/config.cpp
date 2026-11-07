@@ -2,15 +2,121 @@
 #include "utils.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
+#include <type_traits>
+#include <stdexcept>
 #include "portable_paths.h"
 
 using nlohmann::json;
+
+namespace {
+template<class S,class F> void VisitPreferences(S& s,F visit) {
+    visit("theme",s.theme);
+    visit("fontSize",s.fontSize);
+    visit("autoCheck",s.autoCheck);
+    visit("codeCompletion",s.codeCompletion);
+    visit("syntaxHighlight",s.syntaxHighlight);
+    visit("hotkeys",s.hotkeys);
+    visit("editorColors",s.editorColors);
+    visit("rainbowBrackets",s.rainbowBrackets);
+    visit("rainbowIndentLines",s.rainbowIndentLines);
+    visit("rainbowIndentFill",s.rainbowIndentFill);
+    visit("showIndentGuides",s.showIndentGuides);
+    visit("showWhitespace",s.showWhitespace);
+    visit("tabWidth",s.tabWidth);
+    visit("insertSpaces",s.insertSpaces);
+    visit("autoIndent",s.autoIndent);
+    visit("autoCloseBrackets",s.autoCloseBrackets);
+    visit("autoCompletion",s.autoCompletion);
+    visit("completionMinChars",s.completionMinChars);
+    visit("completionRows",s.completionRows);
+    visit("completionWidth",s.completionWidth);
+    visit("autoCheckDelayMs",s.autoCheckDelayMs);
+    visit("lineHeightPercent",s.lineHeightPercent);
+    visit("scrollLines",s.scrollLines);
+    visit("showLineNumbers",s.showLineNumbers);
+    visit("relativeLineNumbers",s.relativeLineNumbers);
+    visit("highlightCurrentLine",s.highlightCurrentLine);
+    visit("highlightWordOccurrences",s.highlightWordOccurrences);
+    visit("showChangeMarkers",s.showChangeMarkers);
+    visit("caretBlink",s.caretBlink);
+    visit("uiFontSize",s.uiFontSize);
+    visit("uiDensity",s.uiDensity);
+    visit("cornerRadius",s.cornerRadius);
+    visit("scrollbarSize",s.scrollbarSize);
+    visit("recoveryIntervalSec",s.recoveryIntervalSec);
+    visit("showToolbar",s.showToolbar);
+    visit("showStatusBar",s.showStatusBar);
+    visit("showActivityBar",s.showActivityBar);
+}
+// Reject malformed preference types before applying any changes.
+void ReadPreferences(Settings& s,const json& values) {
+    if(!values.is_object())throw std::runtime_error("偏好内容必须是对象");
+    VisitPreferences(s,[&](const char* key,auto& value){
+        if(!values.contains(key))return;
+        using T=std::decay_t<decltype(value)>;
+        const auto& item=values.at(key);
+        if constexpr(std::is_same_v<T,bool>){if(!item.is_boolean())throw std::runtime_error(std::string(key)+" 必须为开关");}
+        else if constexpr(std::is_integral_v<T>){if(!item.is_number_integer())throw std::runtime_error(std::string(key)+" 必须为整数");}
+        if constexpr(std::is_same_v<T,std::map<std::string,uint32_t>>){
+            if(!item.is_object()||item.size()>256)throw std::runtime_error("颜色配置无效");
+            for(auto& color:item.items())if(!color.value().is_number_integer()||color.value().get<int64_t>()<0||color.value().get<uint64_t>()>UINT32_MAX)throw std::runtime_error("颜色值无效");
+        }
+        value=item.get<T>();
+    });
+    s.Normalize();
+}
+json PreferenceValues(const Settings& s) {
+    json values=json::object();
+    VisitPreferences(s,[&](const char* key,const auto& value){values[key]=value;});
+    return values;
+}
+}
+void Settings::Normalize() {
+    fontSize=std::clamp(fontSize,12,28);
+    theme=theme=="light"?"light":"dark";
+    tabWidth=std::clamp(tabWidth,2,8);
+    completionMinChars=std::clamp(completionMinChars,1,4);
+    completionRows=std::clamp(completionRows,4,16);
+    completionWidth=std::clamp(completionWidth,360,1000);
+    autoCheckDelayMs=std::clamp(autoCheckDelayMs,200,3000);
+    lineHeightPercent=std::clamp(lineHeightPercent,110,180);
+    scrollLines=std::clamp(scrollLines,1,12);
+    uiFontSize=std::clamp(uiFontSize,12,22);
+    uiDensity=std::clamp(uiDensity,0,2);
+    cornerRadius=std::clamp(cornerRadius,0,12);
+    scrollbarSize=std::clamp(scrollbarSize,8,24);
+    recoveryIntervalSec=std::clamp(recoveryIntervalSec,1,60);
+}
+
+void Settings::ResetPreferences() {
+    Settings defaults;
+    ReadPreferences(*this,PreferenceValues(defaults));
+}
+bool Settings::ExportPreferences(const std::wstring& path,std::string& error) const {
+    try {
+        json data={{"format","ccrIDE.preferences"},{"schema",1},{"preferences",PreferenceValues(*this)}};
+        if(!utils::WriteFileU8(path,data.dump(2)))throw std::runtime_error("无法写入偏好文件");
+        error.clear();return true;
+    } catch(const std::exception& e){error=e.what();return false;}
+}
+bool Settings::ImportPreferences(const std::wstring& path,std::string& error) {
+    try {
+        if(utils::FileSize(path)>1024*1024)throw std::runtime_error("偏好文件不能超过 1 MiB");
+        std::string text;if(!utils::ReadFileU8(path,text))throw std::runtime_error("无法读取偏好文件");
+        auto data=json::parse(text);
+        if(data.value("format",std::string{})!="ccrIDE.preferences"||data.value("schema",0)!=1)throw std::runtime_error("请选择 ccrIDE 导出的偏好文件");
+        Settings candidate=*this;
+        ReadPreferences(candidate,data.at("preferences"));
+        *this=std::move(candidate);error.clear();return true;
+    } catch(const std::exception& e){error=e.what();return false;}
+}
 
 bool Settings::Load(const std::wstring& path) {
     std::string s;
     if (!utils::ReadFileU8(path, s) || s.empty()) return false;
     try {
         json j = json::parse(s);
+        ReadPreferences(*this,j);
         if (j.contains("gppPath"))    gppPath    = j["gppPath"].get<std::string>();
         if (j.contains("theme"))      theme      = j["theme"].get<std::string>();
         if (j.contains("marketUrl"))  marketUrl  = j["marketUrl"].get<std::string>();
@@ -63,18 +169,20 @@ bool Settings::Load(const std::wstring& path) {
         showIndentGuides = j.value("showIndentGuides", true);
         showWhitespace = j.value("showWhitespace", false);
 
+        Normalize();
         return true;
     } catch (...) {
         return false;
     }
 }
 
-void Settings::Save(const std::wstring& path, const std::wstring& portableRoot) const {
+bool Settings::Save(const std::wstring& path, const std::wstring& portableRoot) const {
     // Preserve opaque keys from previous versions for separately installed
     // plugins to migrate later; the host has no knowledge of their schema.
     json j=json::object(); std::string previous;
     if(utils::ReadFileU8(path,previous)) try { auto old=json::parse(previous);if(old.is_object())j=std::move(old); } catch(...) {}
     j.erase("hotkeys");j.erase("disabledPlugins");
+    VisitPreferences(*this,[&](const char* key,const auto& value){j[key]=value;});
     j["gppPath"]   = portableRoot.empty() ? gppPath : utils::WToU8(portable::Store(portableRoot, utils::U8ToW(gppPath)));
     j["theme"]     = theme;
     j["marketUrl"] = marketUrl;
@@ -119,5 +227,5 @@ void Settings::Save(const std::wstring& path, const std::wstring& portableRoot) 
     j["rainbowIndentFill"] = rainbowIndentFill;
     j["showIndentGuides"] = showIndentGuides;
     j["showWhitespace"] = showWhitespace;
-    utils::WriteFileU8(path, j.dump(2));
+    return utils::WriteFileU8(path, j.dump(2));
 }

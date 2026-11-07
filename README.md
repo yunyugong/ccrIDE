@@ -1,6 +1,8 @@
 # ccrIDE
 
-轻量 C++ IDE，使用 Dear ImGui、GLFW 和 OpenGL。当前版本：**0.3.7**。
+轻量 C++ IDE，使用 Dear ImGui、GLFW 和 OpenGL。当前版本：**0.3.7.1**。
+
+0.3.7.1 新增 25 项编辑与界面偏好、设置搜索、快捷预设、偏好导入导出及恢复默认。界面字号与编辑器字号独立，旧配置沿用兼容默认值。详见 [自定义设置](docs/customization.md)。
 
 0.3.7 新增统一任务 ID、独立运行与临时目录，以及跨实例并发限制；从“运行 → 任务管理”查看和取消任务。使用方法及限制见 [任务调度](docs/task-coordinator.md)。AI 与 clangd 插件请使用 1.2.0 版。
 
@@ -16,7 +18,7 @@
 
 ## 安装与使用
 
-Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查看进度和取消安装。便携 ZIP 提供相同的程序文件，解压后运行 `ccrIDE-v0.3.7.exe`。
+Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查看进度和取消安装。便携 ZIP 提供相同的程序文件，解压后运行 `ccrIDE-v0.3.7.1.exe`。
 
 当前 GitHub 仓库提供源码，安装程序和插件 ZIP 尚未上传到 Releases。
 

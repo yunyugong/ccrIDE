@@ -326,6 +326,17 @@ bool OpenFileDialog(const std::wstring& initialDir, std::wstring& outPath) {
     return true;
 }
 
+bool PreferencesFileDialog(bool save,const std::wstring& initialDir,std::wstring& outPath) {
+    wchar_t file[32768]=L"ccrIDE-preferences.json";
+    OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);
+    dialog.lpstrFilter=L"ccrIDE 偏好 (*.json)\0*.json\0所有文件 (*.*)\0*.*\0";
+    dialog.lpstrFile=file;dialog.nMaxFile=32768;
+    dialog.lpstrInitialDir=initialDir.empty()?nullptr:initialDir.c_str();
+    dialog.lpstrDefExt=L"json";dialog.Flags=OFN_EXPLORER|OFN_PATHMUSTEXIST|(save?OFN_OVERWRITEPROMPT:OFN_FILEMUSTEXIST);
+    if(!(save?GetSaveFileNameW(&dialog):GetOpenFileNameW(&dialog)))return false;
+    outPath=file;return true;
+}
+
 // ================= HTTP =================
 
 // 超时: 连接/发送/接收各 15 秒 (接收超时是数据块间隔, 非总时长)

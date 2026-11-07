@@ -110,6 +110,7 @@ public:
 
     // ---- 文档级语义模型 (作用域感知补全 / 对象类型推断 / 用户类型成员) ----
     bool m_decorationDirty = true;
+    int m_decorationTabWidth = 0;
     std::vector<int> m_bracketLevel;
     std::vector<int> m_indentColumns;
     void RebuildDecorations();
@@ -168,6 +169,7 @@ public:
     mutable float m_maxLineWidth = 0;
     mutable ImFont* m_widthFont = nullptr;
     mutable float m_widthFontSize = 0;
+    int m_widthTabWidth = 0;
     mutable bool   m_maxLineDirty = true;
     mutable std::vector<std::vector<Token>> m_tokCache;   // 每行分词缓存
     mutable std::vector<bool> m_tokValid;
@@ -233,6 +235,10 @@ public:
     void DoBackspace();
     void DoDelete();
     void DoEnter();                           // 智能缩进
+    int TabWidth() const;
+    std::string IndentUnit() const;
+    bool ShouldAutoComplete() const;
+    void MultiIndent(bool newline);
     void DoTab();                             // 4 空格
     void DoAutoBracket(unsigned int c);       // 自动配对
     void Undo();

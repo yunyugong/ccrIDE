@@ -120,10 +120,22 @@ std::string CodeEditor::GetSelectionText() const {
 // ===================================================================
 //  度量
 // ===================================================================
+static int EditorTabWidth(){return std::clamp(g_app.settings.tabWidth,2,8);}
+int CodeEditor::TabWidth() const{return EditorTabWidth();}
+std::string CodeEditor::IndentUnit() const{
+    return g_app.settings.insertSpaces?std::string(TabWidth(),' '):"\t";
+}
+bool CodeEditor::ShouldAutoComplete() const{
+    if(!g_app.settings.codeCompletion||!g_app.settings.autoCompletion)return false;
+    bool include=false,quote=false;size_t start=CompPrefixStart(include,quote);
+    char previous=start?m_text[start-1]:0,prior=start>1?m_text[start-2]:0;
+    bool member=previous=='.'||(previous=='>'&&prior=='-')||(previous==':'&&prior==':');
+    return include||member||m_cursor-start>=size_t(std::clamp(g_app.settings.completionMinChars,1,4));
+}
 float CodeEditor::LineH() const {
     ImFont* f = g_app.editorFont ? g_app.editorFont : ImGui::GetFont();
     float fs = f ? f->LegacySize : 16.0f;
-    return std::floor(fs * 1.25f) + 2.0f;
+    return std::floor(fs * std::clamp(g_app.settings.lineHeightPercent,110,180)/100.0f) + 2.0f;
 }
 
 float CodeEditor::CharW() const {
@@ -136,6 +148,7 @@ float CodeEditor::GutterW() const {
     size_t n = m_lines.size();
     int digits = 1;
     while (n >= 10) { n /= 10; digits++; }
+    if(!g_app.settings.showLineNumbers)return 30.0f;
     float w = digits * CharW() + 30.0f;
     return w < 48.0f ? 48.0f : w;
 }
@@ -196,14 +209,18 @@ size_t CodeEditor::LineEnd(size_t line) const {
 size_t CodeEditor::VisualCol(size_t pos) const {
     size_t line = LineOf(pos), ls = LineStart(line);
     size_t col = 0;
-    for (size_t i = ls; i < pos && i < m_text.size(); i = NextChar(i)) col++;
+    for (size_t i = ls; i < pos && i < m_text.size(); i = NextChar(i)) col=m_text[i]=='\t'?(col/TabWidth()+1)*TabWidth():col+1;
     return col;
 }
 
 size_t CodeEditor::ColToByte(size_t line, size_t col) const {
     size_t ls = LineStart(line), le = LineEnd(line);
     size_t i = ls, c = 0;
-    while (i < le && c < col) { i = NextChar(i); c++; }
+    while (i < le && c < col) {
+        size_t next=m_text[i]=='\t'?(c/TabWidth()+1)*TabWidth():c+1;
+        if(next>col&&col-c<(next-c+1)/2)break;
+        i=NextChar(i);c=next;
+    }
     return i;
 }
 
@@ -404,7 +421,7 @@ void CodeEditor::DoBackspace() {
     if (m_cursor == 0) return;
 
     // 空括号对一起删
-    if (m_cursor < m_text.size()) {
+    if (g_app.settings.autoCloseBrackets && m_cursor < m_text.size()) {
         size_t p = PrevChar(m_cursor);
         char before = m_text[p], after = m_text[m_cursor];
         if ((before == '(' && after == ')') || (before == '[' && after == ']') ||
@@ -423,7 +440,9 @@ void CodeEditor::DoBackspace() {
     std::string before = m_text.substr(ls, m_cursor - ls);
     if (!before.empty() && before.find_first_not_of(" \t") == std::string::npos) {
         size_t n = before.size();
-        size_t del = std::min<size_t>(4, n);
+        size_t trailing=0;while(trailing<n&&before[n-trailing-1]==' ')++trailing;
+        size_t step=VisualCol(m_cursor)%TabWidth();if(!step)step=TabWidth();
+        size_t del=before.back()=='\t'?1:std::min(trailing,step);
         EraseRange(m_cursor - del, m_cursor);
         m_cursor -= del;
         m_selAnchor = m_cursor;
@@ -448,42 +467,33 @@ void CodeEditor::DoDelete() {
 
 void CodeEditor::DoEnter() {
     DeleteSelection();
-    size_t line = LineOf(m_cursor), ls = LineStart(line);
-    std::string before = m_text.substr(ls, m_cursor - ls);
-
-    // 提取缩进
-    std::string indent;
-    for (char c : before) {
-        if (c == ' ') indent += ' ';
-        else if (c == '\t') indent += "    ";
-        else break;
+    if(!g_app.settings.autoIndent){InsertText("\n");return;}
+    size_t start=LineStart(LineOf(m_cursor));
+    std::string before=m_text.substr(start,m_cursor-start);
+    size_t count=before.find_first_not_of(" \t");if(count==std::string::npos)count=before.size();
+    std::string indent=before.substr(0,count),code=before.substr(count);
+    if(g_app.settings.insertSpaces){
+        size_t columns=0;for(char c:indent)columns=c=='\t'?(columns/TabWidth()+1)*TabWidth():columns+1;
+        indent.assign(columns,' ');
     }
-    std::string code = before.substr(indent.size());
-    // trim 左侧
-    size_t ws = code.find_first_not_of(" \t");
-    if (ws != std::string::npos) code = code.substr(ws);
-
-    std::string newIndent = indent;
-    if (!code.empty() && code.back() == '{') newIndent += "    ";
-    if (!code.empty() && code.front() == '}') {
-        if (newIndent.size() >= 4) newIndent = newIndent.substr(0, newIndent.size() - 4);
+    std::string next=indent;
+    if(!code.empty()&&code.back()=='{')next+=IndentUnit();
+    if(!code.empty()&&code.front()=='}'&&!next.empty()){
+        size_t remove=next.back()=='\t'?1:std::min(next.size(),size_t(TabWidth()));
+        next.resize(next.size()-remove);
     }
-    // 光标在自动配对的 "{}" 中间回车: '}' 移到新行并与当前行同级, 光标留在中间行
-    if (!code.empty() && code.back() == '{' &&
-        m_cursor < m_text.size() && m_text[m_cursor] == '}') {
-        InsertText("\n" + newIndent + "\n" + indent);
-        m_cursor -= 1 + indent.size();   // 回退到中间行行尾
-        m_selAnchor = m_cursor;
-        m_cursorMoved = true;
-        return;
-    }
-    InsertText("\n" + newIndent);
+    if(!code.empty()&&code.back()=='{'&&m_cursor<m_text.size()&&m_text[m_cursor]=='}'){
+        InsertText("\n"+next+"\n"+indent);
+        m_cursor-=1+indent.size();m_selAnchor=m_cursor;m_cursorMoved=true;
+    }else InsertText("\n"+next);
 }
-
-void CodeEditor::DoTab() { InsertText("    "); }
+void CodeEditor::DoTab(){
+    InsertText(g_app.settings.insertSpaces?std::string(TabWidth()-VisualCol(SelBegin())%TabWidth(),' '):"\t");
+}
 
 void CodeEditor::DoAutoBracket(unsigned int c) {
     char ch = (char)c;
+    if(!g_app.settings.autoCloseBrackets){InsertText(std::string(1,ch));return;}
     // 闭合括号 ) ] }: 光标后就是同字符 -> 跳过 (typed-over); 否则直接插入
     // (注意: 不能落入 default, 否则自动配对的闭合括号无法跳过, 会插入两个)
     if (ch == ')' || ch == ']' || ch == '}') {
@@ -754,7 +764,7 @@ float CodeEditor::CharX(size_t pos) const {
         char c = b[i];
         if (c == '\t') {
             size_t col = (size_t)(x / charW);
-            x = (float)((col / 4 + 1) * 4) * charW;
+            x = (float)((col / EditorTabWidth() + 1) * EditorTabWidth()) * charW;
             i++;
         } else {
             size_t e = NextChar(i);
@@ -788,7 +798,7 @@ size_t CodeEditor::HitTest(float contentX, float contentY) const {
         float w;
         if (c == '\t') {
             size_t col = (size_t)(x / charW);
-            w = (float)((col / 4 + 1) * 4) * charW - x;
+            w = (float)((col / EditorTabWidth() + 1) * EditorTabWidth()) * charW - x;
             i++;
         } else {
             size_t e = NextChar(i);
@@ -941,7 +951,8 @@ void CodeEditor::ToggleFoldAt(int line) {
 }
 
 void CodeEditor::RebuildDecorations() {
-    if (!m_decorationDirty) return;
+    if (!m_decorationDirty&&m_decorationTabWidth==TabWidth()) return;
+    m_decorationTabWidth=TabWidth();
     m_decorationDirty = false;
     m_bracketLevel.assign(m_text.size(), -1);
     m_indentColumns.assign(m_lines.size(), 0);
@@ -951,9 +962,9 @@ void CodeEditor::RebuildDecorations() {
         size_t start=LineStart(line), end=LineEnd(line), p=start;
         int columns=0;
         while (p<end && (m_text[p]==' ' || m_text[p]=='\t')) {
-            columns = m_text[p]=='\t' ? (columns/4+1)*4 : columns+1; ++p;
+            columns = m_text[p]=='\t' ? (columns/TabWidth()+1)*TabWidth() : columns+1; ++p;
         }
-        m_indentColumns[line] = p == end ? std::max(columns, braces*4) : columns;
+        m_indentColumns[line] = p == end ? std::max(columns, braces*TabWidth()) : columns;
         EnsureTokens(line);
         for (const auto& token : m_tokCache[line]) {
             if (token.type == TokenKind::String || token.type == TokenKind::Comment || token.type == TokenKind::Preprocessor) continue;
@@ -2655,7 +2666,7 @@ static void DrawRange(ImDrawList* dl, ImFont* f, float fs, ImVec2 pos, float ori
     while (i < end) {
         if (b[i] == '\t') {
             size_t col = (size_t)((x - originX) / charW);
-            x = originX + (float)((col / 4 + 1) * 4) * charW;
+            x = originX + (float)((col / EditorTabWidth() + 1) * EditorTabWidth()) * charW;
             i++;
         } else {
             size_t e = i + 1;
@@ -2811,7 +2822,7 @@ void CodeEditor::DrawContextMenu() {
             t.reserve(s.size());
             for (char c : s) {
                 if (c == '\r') continue;
-                if (c == '\t') t += "    ";
+                if (c == '\t') t += g_app.settings.insertSpaces?std::string(TabWidth(),' '):"\t";
                 else t += c;
             }
             InsertText(t);
@@ -2876,7 +2887,7 @@ void CodeEditor::Draw() {
     m_drawSize = avail;
     if (m_drawSize.x < 50 || m_drawSize.y < 50) return;   // 注意: 必须在 PushFont 之前提前返回
 
-    ImGui::PushFont(f);
+    ImGui::PushFont(f,fs);
 
     ImRect rect(m_drawPos, ImVec2(m_drawPos.x + m_drawSize.x, m_drawPos.y + m_drawSize.y));
 
@@ -3017,7 +3028,7 @@ void CodeEditor::Draw() {
     if (hovered) {
         if (io.MouseWheel != 0.0f) {
             if (io.KeyShift) m_scrollX -= io.MouseWheel * charW * 6.0f;
-            else m_scrollY -= io.MouseWheel * 3.0f * lineH;
+            else m_scrollY -= io.MouseWheel * std::clamp(g_app.settings.scrollLines,1,12) * lineH;
         }
         if (io.MouseWheelH != 0.0f) m_scrollX -= io.MouseWheelH * charW * 6.0f;
     }
@@ -3063,7 +3074,7 @@ void CodeEditor::Draw() {
                         std::string t;
                         for (char c : std::string(clip)) {
                             if (c == '\r') continue;
-                            t += (c == '\t') ? "    " : std::string(1, c);
+                            t += (c == '\t') ? (g_app.settings.insertSpaces?std::string(TabWidth(),' '):"\t") : std::string(1, c);
                         }
                         InsertText(t);
                     }
@@ -3136,9 +3147,9 @@ void CodeEditor::Draw() {
                     size_t hs = 0; bool hq = false;
                     if (InIncludeCompletion(hs, hq)) {
                         // #include 路径内: 继续文件补全 (在字符串中, 不能用 CursorInStringOrComment 关闭)
-                        if (m_compOpen) UpdateCompletion(); else OpenCompletion();
+                        if (m_compOpen) UpdateCompletion(); else if(ShouldAutoComplete()) OpenCompletion();
                     } else if (CursorInStringOrComment()) CloseCompletion();
-                    else if (!m_compOpen) OpenCompletion();
+                    else if (!m_compOpen) {if(ShouldAutoComplete())OpenCompletion();}
                     else UpdateCompletion();
                 } else {
                     // 输入 "}" 且行首到光标全为空白: 自动反缩进一层, 与 "{" 对齐
@@ -3147,18 +3158,14 @@ void CodeEditor::Draw() {
                         bool onlyBlank = true;
                         for (size_t p = ls; p < m_cursor; p++)
                             if (m_text[p] != ' ' && m_text[p] != '\t') { onlyBlank = false; break; }
-                        if (onlyBlank && m_cursor >= ls + 4 &&
-                            m_text[m_cursor - 1] == ' ' && m_text[m_cursor - 2] == ' ' &&
-                            m_text[m_cursor - 3] == ' ' && m_text[m_cursor - 4] == ' ') {
-                            EraseRange(m_cursor - 4, m_cursor);
-                        }
+                        if(g_app.settings.autoIndent&&onlyBlank&&m_cursor>ls)DoBackspace();
                     }
                     DoAutoBracket(ch);          // 括号等 -> 配对插入
                     CloseCompletion();
                     // #include 文件补全: 输入 " < 或 / \ . - + 等路径字符后继续提示
                     size_t ihs = 0; bool ihq = false;
                     if (InIncludeCompletion(ihs, ihq)) {
-                        if (m_compOpen) UpdateCompletion(); else OpenCompletion();
+                        if (m_compOpen) UpdateCompletion(); else if(ShouldAutoComplete()) OpenCompletion();
                         continue;   // 文件补全上下文不再走成员/签名提示
                     }
                     // 访问符触发成员/命名空间/头文件补全: .   ->   ::
@@ -3169,7 +3176,7 @@ void CodeEditor::Draw() {
                         accessor = (m_cursor >= 2 && m_text[m_cursor - 2] == '-');
                     else if (ch == ':')
                         accessor = (m_cursor >= 2 && m_text[m_cursor - 2] == ':');
-                    if (accessor && !CursorInStringOrComment()) {
+                    if (accessor && g_app.settings.autoCompletion && !CursorInStringOrComment()) {
                         m_compStart = m_cursor;    // 空前缀, 列出全部成员
                         m_compPrefix.clear();
                         GatherCandidates(m_compPrefix, m_compItems);
@@ -3210,10 +3217,10 @@ void CodeEditor::Draw() {
     m_scrollY = std::max(0.0f, std::min(m_scrollY, maxScrollY));
 
     // Measure pixels, including tabs/UTF-8; invalidate when text or font changes.
-    if (m_maxLineDirty || m_widthFont != f || m_widthFontSize != fs) {
+    if (m_maxLineDirty || m_widthFont != f || m_widthFontSize != fs || m_widthTabWidth!=TabWidth()) {
         m_maxLineWidth = 0;
         for (size_t li=0; li<m_lines.size(); ++li) m_maxLineWidth=std::max(m_maxLineWidth,CharX(LineEnd(li)));
-        m_maxLineDirty=false; m_widthFont=f; m_widthFontSize=fs;
+        m_maxLineDirty=false; m_widthFont=f; m_widthFontSize=fs; m_widthTabWidth=TabWidth();
     }
     float contentW = m_maxLineWidth + 80.0f;
     float maxScrollX = std::max(0.0f, contentW - (m_drawSize.x - gutter));
@@ -3234,12 +3241,12 @@ void CodeEditor::Draw() {
     int cursorRow = VisibleRowOfLine((int)cursorLine);   // 光标所在可视行 (保护逻辑保证可见)
     size_t selA = SelBegin(), selB = SelEnd();
     bool hasSel = m_selActive && selA != selB;
-    const std::string currentWord = hasSel ? std::string() : IdentAt(m_cursor);
+    const std::string currentWord = (hasSel||!g_app.settings.highlightWordOccurrences) ? std::string() : IdentAt(m_cursor);
     const char* b = m_text.data();
 
     // 当前行高亮
     float curY = rect.Min.y + cursorRow * lineH - m_scrollY;
-    if (cursorRow >= firstRow && cursorRow < lastRow) {
+    if (g_app.settings.highlightCurrentLine&&cursorRow >= firstRow && cursorRow < lastRow) {
         dl->AddRectFilled(ImVec2(rect.Min.x, curY), ImVec2(rect.Max.x, curY + lineH), g_app.colors.curLineBg);
     }
 
@@ -3255,7 +3262,7 @@ void CodeEditor::Draw() {
         // 行号栏背景
         dl->AddRectFilled(ImVec2(rect.Min.x, y), ImVec2(rect.Min.x + gutter, y + lineH), g_app.colors.gutterBg);
 
-        if ((size_t)li == cursorLine)
+        if (g_app.settings.highlightCurrentLine&&(size_t)li == cursorLine)
             dl->AddRectFilled(ImVec2(rect.Min.x,y), ImVec2(rect.Min.x+gutter,y+lineH), g_app.EditorColorValue(EditorColor::CurrentGutter));
 
         // 诊断行: 淡色行背景 + 行号栏标记条 (错误红 / 警告黄)
@@ -3263,7 +3270,7 @@ void CodeEditor::Draw() {
            _wcsicmp(utils::U8ToW(g_app.debugView.file).c_str(),m_path.c_str())==0)
             dl->AddRectFilled(ImVec2(rect.Min.x+gutter,y),ImVec2(rect.Max.x,y+lineH),g_app.EditorColorValue(EditorColor::ActiveBreakpoint));
         bool original = (size_t)li < m_originalLines.size() && m_originalLines[li];
-        dl->AddRectFilled(ImVec2(rect.Min.x+gutter-4,y+1), ImVec2(rect.Min.x+gutter-1,y+lineH-1),
+        if(g_app.settings.showChangeMarkers)dl->AddRectFilled(ImVec2(rect.Min.x+gutter-4,y+1), ImVec2(rect.Min.x+gutter-1,y+lineH-1),
             g_app.EditorColorValue(original ? EditorColor::OriginalLine : EditorColor::AddedLine));
         if(std::binary_search(m_breakpoints.begin(),m_breakpoints.end(),li+1))
             dl->AddCircleFilled(ImVec2(rect.Min.x+16,y+lineH/2),3.5f,g_app.EditorColorValue(EditorColor::Breakpoint));
@@ -3288,7 +3295,7 @@ void CodeEditor::Draw() {
 
         // 行号
         char num[16];
-        snprintf(num, sizeof(num), "%d", li + 1);
+        snprintf(num, sizeof(num), "%d", g_app.settings.relativeLineNumbers&&li!=int(cursorLine)?std::abs(li-int(cursorLine)):li+1);
         float numW = ImGui::CalcTextSize(num).x;
 
         // 折叠标记 (+ 展开 / - 收起), 位于行号左侧
@@ -3305,7 +3312,7 @@ void CodeEditor::Draw() {
                 dl->AddText(ImVec2(rect.Min.x + 3, y + (lineH - fs) * 0.5f), c, m);
             }
         }
-        dl->AddText(ImVec2(rect.Min.x + gutter - numW - 8.0f, y + (lineH - fs) * 0.5f),
+        if(g_app.settings.showLineNumbers)dl->AddText(ImVec2(rect.Min.x + gutter - numW - 8.0f, y + (lineH - fs) * 0.5f),
                     g_app.colors.lineNum, num);
 
         // 文本区
@@ -3317,12 +3324,12 @@ void CodeEditor::Draw() {
         dl->PushClipRect(ImVec2(textLeft,rect.Min.y),ImVec2(textRight,rect.Max.y),true);
         // Indentation layers are independent from syntax and selection colors.
         int indent=(size_t)li<m_indentColumns.size() ? m_indentColumns[li] : 0;
-        for (int column=0, level=0; column+4<=indent; column+=4,++level) {
+        for (int column=0, level=0; column+TabWidth()<=indent; column+=TabWidth(),++level) {
             float ix=textLeft + column*charW-m_scrollX;
             ImU32 rainbow=g_app.EditorColorValue((EditorColor)((int)EditorColor::Bracket1+level%4));
             if(g_app.settings.rainbowIndentFill) {
                 ImVec4 fill=ImGui::ColorConvertU32ToFloat4(rainbow); fill.w *= 0.08f;
-                dl->AddRectFilled(ImVec2(ix,y),ImVec2(ix+4*charW,y+lineH),ImGui::ColorConvertFloat4ToU32(fill));
+                dl->AddRectFilled(ImVec2(ix,y),ImVec2(ix+TabWidth()*charW,y+lineH),ImGui::ColorConvertFloat4ToU32(fill));
             }
             if(g_app.settings.showIndentGuides || g_app.settings.rainbowIndentLines)
                 dl->AddLine(ImVec2(ix+0.5f,y),ImVec2(ix+0.5f,y+lineH),g_app.settings.rainbowIndentLines ? rainbow : g_app.EditorColorValue(EditorColor::Indent));
@@ -3374,7 +3381,7 @@ void CodeEditor::Draw() {
                     while (i < e2) {
                         if (b[i] == '\t') {
                             // Tab 停靠点以行文本起点 xBase 为第 0 列 (与 CharX / DrawRange 一致)
-                            float nx = xBase + (float)((((size_t)((x + w - xBase) / charW)) / 4 + 1) * 4) * charW;
+                            float nx = xBase + (float)((((size_t)((x + w - xBase) / charW)) / EditorTabWidth() + 1) * EditorTabWidth()) * charW;
                             w += nx - (x + w);
                             i++;
                         } else {
@@ -3442,7 +3449,7 @@ void CodeEditor::Draw() {
     // 光标
     if (windowFocused) {
         float blink = (float)fmod(ImGui::GetTime() * 2.2, 1.0);
-        bool on = blink < 0.6f;
+        bool on = !g_app.settings.caretBlink||blink < 0.6f;
         if (on) {
             float cx = rect.Min.x + gutter + CharX(m_cursor) - m_scrollX;
             float cy = rect.Min.y + cursorRow * lineH - m_scrollY;
@@ -3547,7 +3554,7 @@ void CodeEditor::Draw() {
         const bool hasHint=m_compIdx>=0 && m_compIdx<total && !m_compItems[m_compIdx].hint.empty();
         const bool hasDocumentation=g_app.plugins.HasCompletionProvider() && !m_compItems[std::clamp(m_compIdx,0,total-1)].languageRevision;
         const float detailsH = hasDocumentation ? std::min(260.0f, maxH * 0.44f) : hasHint ? std::min(84.0f,maxH*0.18f) : 0.0f;
-        const int visible = std::max(1, std::min(9, (int)((maxH - detailsH - 85.0f) / rowH)));
+        const int visible = std::max(1, std::min(std::clamp(g_app.settings.completionRows,4,16), (int)((maxH - detailsH - 85.0f) / rowH)));
         if (m_compIdx < 0) m_compIdx = 0;
         if (m_compIdx >= total) m_compIdx = total - 1;
         if (m_compIdx < m_compScroll) m_compScroll = m_compIdx;
@@ -3570,7 +3577,7 @@ void CodeEditor::Draw() {
             wText = std::max(wText, w);
         }
         const float winW = std::min(std::max(340.0f, 20.0f + wKind + 8.0f + wText + 38.0f),
-                                    std::min(640.0f, std::max(1.0f, vp->WorkSize.x - 12.0f)));
+                                    std::min(float(std::clamp(g_app.settings.completionWidth,360,1000)), std::max(1.0f, vp->WorkSize.x - 12.0f)));
         const float rowW = std::max(1.0f, winW - 12.0f);
         const float winH = std::min(maxH, shown * rowH + detailsH + 85.0f);
         const float minX = vp->WorkPos.x + 6.0f, minY = vp->WorkPos.y + 6.0f;

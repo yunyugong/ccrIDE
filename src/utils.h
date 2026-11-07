@@ -66,6 +66,8 @@ std::wstring BackupName();
 bool SaveFileDialog(const std::wstring& initialDir, const std::wstring& defName, std::wstring& outPath);
 bool OpenFileDialog(const std::wstring& initialDir, std::wstring& outPath);
 
+bool PreferencesFileDialog(bool save,const std::wstring& initialDir,std::wstring& outPath);
+
 // ---- HTTP (WinINet) ----
 // GET 一个 URL, 成功返回 true; out 为响应体
 bool HttpGet(const std::string& url, std::string& out, std::string& errMsg,const std::string& apiKey = {});

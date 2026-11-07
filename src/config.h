@@ -49,6 +49,37 @@ struct Settings {
     bool showWhitespace = false;
     std::map<std::string, uint32_t> editorColors; // theme/key -> packed RGBA
 
+    // Editor and workspace preferences (v0.3.7.1).
+    int tabWidth = 4;
+    bool insertSpaces = true;
+    bool autoIndent = true;
+    bool autoCloseBrackets = true;
+    bool autoCompletion = true;
+    int completionMinChars = 1;
+    int completionRows = 9;
+    int completionWidth = 640;
+    int autoCheckDelayMs = 800;
+    int lineHeightPercent = 125;
+    int scrollLines = 3;
+    bool showLineNumbers = true;
+    bool relativeLineNumbers = false;
+    bool highlightCurrentLine = true;
+    bool highlightWordOccurrences = true;
+    bool showChangeMarkers = true;
+    bool caretBlink = true;
+    int uiFontSize = 15;
+    int uiDensity = 1;
+    int cornerRadius = 5;
+    int scrollbarSize = 11;
+    int recoveryIntervalSec = 3;
+    bool showToolbar = true;
+    bool showStatusBar = true;
+    bool showActivityBar = true;
+
+    void Normalize();
+    void ResetPreferences();
+    bool ExportPreferences(const std::wstring& path,std::string& error) const;
+    bool ImportPreferences(const std::wstring& path,std::string& error);
     bool Load(const std::wstring& path);
-    void Save(const std::wstring& path, const std::wstring& portableRoot = {}) const;
+    bool Save(const std::wstring& path, const std::wstring& portableRoot = {}) const;
 };
