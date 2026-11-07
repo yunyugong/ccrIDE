@@ -32,6 +32,8 @@ bool SelectSaveDir(std::wstring& out);
 
 // ---- 递归查找 g++.exe ----
 bool FindGpp(const std::vector<std::wstring>& roots, std::wstring& out);
+std::vector<std::wstring> CompilerSearchRoots();
+std::vector<std::wstring> FindGpps(const std::vector<std::wstring>& roots, std::atomic<bool>* cancel = nullptr);
 
 // ---- 运行进程: 输出重定向到文件, 超时强杀 ----
 struct RunResult {

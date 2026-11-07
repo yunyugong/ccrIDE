@@ -118,6 +118,7 @@ int main() {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
+        g_app.DrawCompilerPicker();
         DrawMainMenuBar();
 
         g_app.debugView=g_app.debugger.Snapshot();
@@ -821,21 +822,14 @@ static void DrawSettingsWindow() {
     field("附加编译参数");
     ui::InputTextStd("##附加编译参数", g_app.settings.extraFlags);
     help("空格分隔, 如: -g -Wall -std=c++20 (默认 -std=c++17 -O2)");
-    if (ImGui::Button("自动查找")) {
-        std::vector<std::wstring> roots = {
-            utils::GetExeDir() + L"\\toolchain\\mingw64\\bin",
-            L"D:\\rred\\mingw64\\bin", L"E:\\rred\\mingw64\\bin",
-            L"C:\\Program Files (x86)\\Dev-Cpp", L"C:\\Program Files\\Dev-Cpp",
-            L"C:\\msys64\\ucrt64\\bin",
-        };
-        std::wstring gpp;
-        if (utils::FindGpp(roots, gpp)) {
-            g_app.settings.gppPath = utils::WToU8(gpp);
-            g_app.console.Append("[设置] 找到 g++: " + g_app.settings.gppPath + "\n", IM_COL32(140, 220, 150, 255));
-        } else {
-            g_app.console.Append("[设置] 自动查找失败\n", IM_COL32(255, 120, 120, 255));
-        }
+    if (ImGui::Button("递归查找编译器")) g_app.StartCompilerSearch();
+    if(!g_app.compilerCandidates.empty()) {
+        ImGui::SameLine();
+        if(ImGui::Button("选择已找到的编译器"))g_app.compilerPickerOpen=true;
     }
+    if(g_app.compilerScanBusy.load())ImGui::TextWrapped("正在后台扫描本机磁盘，可在编译器选择窗口取消。");
+    else if(!g_app.compilerScanMessage.empty())ImGui::TextWrapped("%s",g_app.compilerScanMessage.c_str());
+
 
     }
     if(section==1) {

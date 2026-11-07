@@ -6,7 +6,7 @@
 #  依赖路径与 build.ps1 一致, 可用 -DIMGUI_DIR=... 等覆盖
 # ============================================================
 cmake_minimum_required(VERSION 3.16)
-project(ccrIDE VERSION 0.3.1 LANGUAGES CXX)
+project(ccrIDE VERSION 0.3.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

@@ -1,4 +1,4 @@
-param([string]$Version = "0.3.1", [string]$BuildDate = "")
+param([string]$Version = "0.3.2", [string]$BuildDate = "")
 # ============================================================
 #  ccrIDE 构建脚本 (Windows PowerShell)
 #  需要: E:\rred\mingw64\bin\g++.exe (Red Panda C++) 或任意 MinGW-w64

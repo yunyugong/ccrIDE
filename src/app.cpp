@@ -167,31 +167,15 @@ bool App::Init() {
             if(it.value().is_string()) lastArtifacts[utils::U8ToW(it.key())]=utils::U8ToW(it.value().get<std::string>());
     } catch(...) {}
 
-    // 2. g++ 查找
-    std::wstring gpp;
-    if (!settings.gppPath.empty()) gpp = portable::Resolve(executableDir, utils::U8ToW(settings.gppPath));
-    if (gpp.empty() && portableMode) {
-        auto bundled = executableDir + L"\\toolchain\\mingw64\\bin\\g++.exe";
-        if (GetFileAttributesW(bundled.c_str()) != INVALID_FILE_ATTRIBUTES) gpp = bundled;
+    // Keep a valid saved compiler; discover all candidates when configuration is missing.
+    auto configured=portable::Resolve(executableDir,utils::U8ToW(settings.gppPath));
+    DWORD compilerAttributes=settings.gppPath.empty() ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(configured.c_str());
+    if(compilerAttributes!=INVALID_FILE_ATTRIBUTES && !(compilerAttributes&FILE_ATTRIBUTE_DIRECTORY))
+        settings.gppPath=utils::WToU8(configured);
+    else {
+        settings.gppPath.clear();
+        StartCompilerSearch();
     }
-    if (gpp.empty()) {
-        std::vector<std::wstring> roots = {
-            L"D:\\rred\\mingw64\\bin",
-            L"E:\\rred\\mingw64\\bin",
-            L"C:\\Program Files (x86)\\Dev-Cpp",
-            L"C:\\Program Files\\Dev-Cpp",
-            L"C:\\msys64\\ucrt64\\bin",
-        };
-        if (!utils::FindGpp(roots, gpp)) {
-            wchar_t buf[MAX_PATH] = {0};
-            if (SearchPathW(nullptr, L"g++.exe", nullptr, MAX_PATH, buf, nullptr) > 0)
-                gpp = buf;
-        }
-    }
-    if (!gpp.empty())
-        settings.gppPath = utils::WToU8(gpp);
-    else
-        console.Append("[警告] 未找到 g++ 编译器, 请在 设置 中配置路径\n", IM_COL32(255, 200, 100, 255));
 
     // 3. 插件目录 (DLL 加载需在 ImGui 上下文创建后, 由 main 调用 ScanAndLoad)
     plugins.LoadBundledCatalog();
@@ -1120,6 +1104,8 @@ void App::PumpProcResults() {
 //  退出: 等待后台线程结束 (线程持有 this / 引用全局, 不可在运行中销毁)
 // ===================================================================
 void App::Shutdown() {
+    compilerScanCancel=true;
+    if(compilerScanThread.joinable())compilerScanThread.join();
     killRequested.store(true);
     shuttingDown.store(true);
     if (procThread.joinable()) procThread.join();
@@ -1211,4 +1197,58 @@ void App::LoadSession() {
     if (editors.empty()) NewFile();
     SyncDiagPanel();
     MarkDiag();   // 恢复后对当前文件做一次语法检查
+}
+
+void App::StartCompilerSearch(const std::vector<std::wstring>& roots) {
+    if(compilerScanBusy.load())return;
+    if(compilerScanThread.joinable())compilerScanThread.join();
+    compilerScanDone=false;compilerScanCancel=false;compilerScanBusy=true;
+    compilerScanMessage="正在递归扫描本机磁盘，可取消；已有配置保持不变。";
+    compilerPickerOpen=true;
+    compilerScanThread=std::thread([this,roots](){
+        try {compilerScanResults=utils::FindGpps(roots.empty() ? utils::CompilerSearchRoots() : roots,&compilerScanCancel);}
+        catch(...) {compilerScanResults.clear();}
+        compilerScanDone=true;compilerScanBusy=false;
+    });
+}
+void App::PumpCompilerSearch() {
+    if(!compilerScanDone.exchange(false))return;
+    if(compilerScanThread.joinable())compilerScanThread.join();
+    compilerCandidates=std::move(compilerScanResults);
+    if(compilerScanCancel)compilerScanMessage="扫描已取消，下面是取消前找到的编译器。";
+    else compilerScanMessage=compilerCandidates.empty() ? "未找到 g++，可在设置中手动输入路径。" : "找到 "+std::to_string(compilerCandidates.size())+" 个 g++，请选择要使用的编译器。";
+    if(!compilerScanCancel && compilerCandidates.size()==1 && settings.gppPath.empty())
+        SelectCompiler(compilerCandidates.front());
+}
+bool App::SelectCompiler(const std::wstring& path) {
+    DWORD attrs=GetFileAttributesW(path.c_str());
+    if(attrs==INVALID_FILE_ATTRIBUTES || (attrs&FILE_ATTRIBUTE_DIRECTORY))return false;
+    settings.gppPath=utils::WToU8(path);
+    if(!settingsPath.empty())settings.Save(settingsPath,portableMode ? executableDir : std::wstring());
+    MarkDiag();
+    compilerScanMessage="已选择: "+settings.gppPath;
+    compilerPickerOpen=false;
+    return true;
+}
+void App::DrawCompilerPicker() {
+    PumpCompilerSearch();
+    if(!compilerPickerOpen)return;
+    ImGui::SetNextWindowSize(ImVec2(720,380),ImGuiCond_FirstUseEver);
+    if(ImGui::Begin("选择 C++ 编译器",&compilerPickerOpen)) {
+        ImGui::TextWrapped("%s",compilerScanMessage.c_str());
+        if(compilerScanBusy) {
+            if(ImGui::Button("取消扫描"))compilerScanCancel=true;
+        } else {
+            ImGui::BeginChild("compiler_candidates",ImVec2(0,-ImGui::GetFrameHeightWithSpacing()),ImGuiChildFlags_Borders,ImGuiWindowFlags_HorizontalScrollbar);
+            for(const auto& path:compilerCandidates) {
+                auto label=utils::WToU8(path);
+                if(ImGui::Selectable(label.c_str(),settings.gppPath==label))SelectCompiler(path);
+                if(ImGui::IsItemHovered())ImGui::SetTooltip("%s",label.c_str());
+            }
+            ImGui::EndChild();
+            if(ImGui::Button("重新扫描"))StartCompilerSearch();
+            ImGui::SameLine();if(ImGui::Button("关闭"))compilerPickerOpen=false;
+        }
+    }
+    ImGui::End();
 }

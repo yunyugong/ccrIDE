@@ -43,6 +43,15 @@ struct Console {
 struct ProcOut { std::string text; ImU32 color; bool terminal = false; };
 
 struct App {
+    std::thread compilerScanThread;
+    std::atomic<bool> compilerScanBusy{false},compilerScanCancel{false},compilerScanDone{false};
+    std::vector<std::wstring> compilerScanResults,compilerCandidates;
+    bool compilerPickerOpen=false;
+    std::string compilerScanMessage;
+    void StartCompilerSearch(const std::vector<std::wstring>& roots = {});
+    void PumpCompilerSearch();
+    bool SelectCompiler(const std::wstring& path);
+    void DrawCompilerPicker();
     // ---- 路径 ----
     std::wstring saveDir;       // D:\ etc.
     std::wstring dataDir;       // saveDir\MiniCPP

@@ -1160,6 +1160,32 @@ static int CheckPortablePackage() {
     return g_fail ? 1 : 0;
 }
 
+static void TestCompilerDiscovery() {
+    namespace fs=std::filesystem;
+    auto root=fs::temp_directory_path()/(L"ccride-compiler-discovery-"+std::to_wstring(GetCurrentProcessId()));
+    fs::create_directories(root);
+    auto deep=root;for(int i=0;i<14;++i)deep/="nested";
+    fs::create_directories(deep);
+    fs::create_directories(root/"not-a-compiler/g++.exe");
+    auto first=deep/"g++.exe",second=root/"G++.EXE";
+    utils::WriteFileU8(first.wstring(),"fixture");utils::WriteFileU8(second.wstring(),"fixture");
+    auto results=utils::FindGpps({root.wstring(),root.wstring(),deep.wstring()});
+    CHECK(results.size()==2);
+    std::atomic<bool> cancelled{true};CHECK(utils::FindGpps({root.wstring()},&cancelled).empty());
+    App app;app.settingsPath=(root/"settings.json").wstring();
+    app.StartCompilerSearch({root.wstring()});app.compilerScanThread.join();app.PumpCompilerSearch();
+    CHECK(app.compilerCandidates.size()==2);CHECK(app.settings.gppPath.empty());CHECK(app.compilerPickerOpen);
+    CHECK(app.SelectCompiler(first.wstring()));
+    Settings stored;stored.Load(app.settingsPath);CHECK(stored.gppPath==utils::WToU8(first.wstring()));
+    app.StartCompilerSearch({root.wstring()});app.compilerScanThread.join();app.PumpCompilerSearch();
+    CHECK(app.settings.gppPath==utils::WToU8(first.wstring()));
+    CHECK(!app.SelectCompiler((root/"missing.exe").wstring()));
+    fs::remove(second);app.settings.gppPath.clear();
+    app.StartCompilerSearch({root.wstring()});app.compilerScanThread.join();app.PumpCompilerSearch();
+    CHECK(app.settings.gppPath==utils::WToU8(first.wstring()));CHECK(!app.compilerPickerOpen);
+    fs::remove_all(root);
+}
+
 static void TestOptionalPluginLifecycle() {
     ImGui::CreateContext();
     CodeEditor editor;
@@ -1274,6 +1300,7 @@ int main(int argc, char** argv) {
     TestIndependentEditorFeatures();
     TestProcStatusThreadSafe();
     TestCommentLinks();
+    TestCompilerDiscovery();
     TestOptionalPluginLifecycle();
     TestCompletionDocumentation();
     TestCompletionPopupLayout();

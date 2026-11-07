@@ -347,6 +347,22 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        if(scenario==0) {
+            g_app.compilerCandidates={L"C:\\Toolchains\\GCC-11\\bin\\g++.exe",L"D:\\Toolchains\\GCC-14\\bin\\g++.exe"};
+            g_app.compilerScanMessage="找到 2 个 g++，请选择要使用的编译器。";
+            g_app.compilerPickerOpen=true;
+            for(int frame=0;frame<3;++frame) {
+                ImGui_ImplOpenGL3_NewFrame();ImGui_ImplGlfw_NewFrame();ImGui::NewFrame();
+                g_app.DrawCompilerPicker();
+                ImGui::Render();glViewport(0,0,width,height);glClear(GL_COLOR_BUFFER_BIT);ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+                if(frame==2) {
+                    auto* picker=ImGui::FindWindowByName("选择 C++ 编译器");
+                    if(!picker || picker->Size.x>width || picker->Size.y>height){++failures;printf("FAIL compiler picker layout\n");}
+                    SaveFrame(output/"compiler-picker.bmp",width,height);
+                }
+            }
+            g_app.compilerPickerOpen=false;g_app.compilerCandidates.clear();
+        }
         if(scenario==0) UnloadDocumentationTestPlugin();
         g_shellIcons.Clear();
         ImGui_ImplOpenGL3_Shutdown(); ImGui_ImplGlfw_Shutdown(); ImGui::DestroyContext();

@@ -1,6 +1,6 @@
 # ccrIDE
 
-轻量 C++ IDE，使用 Dear ImGui、GLFW 和 OpenGL。当前版本：**0.3.1**。
+轻量 C++ IDE，使用 Dear ImGui、GLFW 和 OpenGL。当前版本：**0.3.2**。
 
 提供代码补全、语法高亮、多文件编辑、独立编译与运行，以及基础 GDB 调试。最初原型保留在 `IDE.py`，当前产品名为 ccrIDE。
 
@@ -8,7 +8,7 @@
 
 ## 安装与使用
 
-Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查看进度和取消安装。便携 ZIP 提供相同的程序文件，解压后运行 `ccrIDE-v0.3.1.exe`。
+Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查看进度和取消安装。便携 ZIP 提供相同的程序文件，解压后运行 `ccrIDE-v0.3.2.exe`。
 
 当前 GitHub 仓库提供源码，安装程序和插件 ZIP 尚未上传到 Releases。
 
@@ -54,6 +54,12 @@ AI 连接通过“插件 → AI 助手设置”配置，设置独立保存至 `d
 
 时钟与 Hello 是随主程序编译的示例插件，仍需对应清单。
 
+## 编译器查找与选择
+
+首次启动没有有效配置时，后台递归扫描本机固定磁盘和可移动磁盘，不依赖开发者电脑的盘符或安装目录。权限不足的目录会跳过，不跟随目录链接；扫描可取消。
+
+只找到一个 g++ 且尚未配置时自动使用；找到多个时显示完整路径，由用户选择后保存。已有有效配置不会被扫描结果覆盖。设置中可重新扫描、选择已找到的编译器，也可手动编辑 g++ 路径并保存。网络盘不自动扫描。
+
 ## 默认快捷键
 
 | 按键 | 功能 |
@@ -95,7 +101,7 @@ cmake --build build/cmake --target MiniCPP ai_assistant_plugin completion_docs_p
 
 当前使用 GLFW 3.4 和 Dear ImGui 1.92.9 docking 系列。插件必须使用与宿主相同的 ImGui 版本、配置和目标架构。
 
-- 主程序产物：`build/releases/ccrIDE-v0.3.1.exe`。同版本重复构建会增加编号，旧产物保留。
+- 主程序产物：`build/releases/ccrIDE-v0.3.2.exe`。同版本重复构建会增加编号，旧产物保留。
 - 独立插件产物：`build/plugins/ai-assistant/` 和 `build/plugins/completion-docs/`。
 - 安装程序外壳：`build/cmake/ccride_installer.exe`，需要打包脚本附加程序与工具链后才能用于安装。
 

@@ -5,6 +5,9 @@
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
+#include <set>
+#include <algorithm>
+#include <cwctype>
 #include <nlohmann/json.hpp>
 
 using nlohmann::json;
@@ -190,36 +193,46 @@ bool SelectSaveDir(std::wstring& out) {
     return false;
 }
 
-static bool FindInDir(const std::wstring& dir, int depth, std::wstring& out) {
-    if (depth > 9) return false;
-    std::wstring pat = dir + L"\\*";
-    WIN32_FIND_DATAW fd;
-    HANDLE h = FindFirstFileW(pat.c_str(), &fd);
-    if (h == INVALID_HANDLE_VALUE) return false;
-    do {
-        std::wstring name = fd.cFileName;
-        if (name == L"." || name == L"..") continue;
-        std::wstring full = dir + L"\\" + name;
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            if (name == L"Windows") continue; // 跳过系统目录
-            if (FindInDir(full, depth + 1, out)) { FindClose(h); return true; }
-        } else if (name == L"g++.exe") {
-            out = full;
-            FindClose(h);
-            return true;
-        }
-    } while (FindNextFileW(h, &fd));
-    FindClose(h);
-    return false;
-}
-
-bool FindGpp(const std::vector<std::wstring>& roots, std::wstring& out) {
-    for (const auto& root : roots) {
-        if (GetFileAttributesW(root.c_str()) != INVALID_FILE_ATTRIBUTES) {
-            if (FindInDir(root, 0, out)) return true;
-        }
+std::vector<std::wstring> CompilerSearchRoots() {
+    std::vector<std::wstring> roots;
+    wchar_t drives[512]{};DWORD n=GetLogicalDriveStringsW(512,drives);
+    if(n && n<512)for(const wchar_t* drive=drives;*drive;drive+=wcslen(drive)+1) {
+        UINT type=GetDriveTypeW(drive);
+        if(type==DRIVE_FIXED || type==DRIVE_REMOVABLE)roots.emplace_back(drive);
     }
-    return false;
+    return roots;
+}
+std::vector<std::wstring> FindGpps(const std::vector<std::wstring>& roots,std::atomic<bool>* cancel) {
+    std::vector<std::wstring> pending,found;std::set<std::wstring> visited,files;
+    auto key=[](std::wstring p){std::replace(p.begin(),p.end(),L'/',L'\\');std::transform(p.begin(),p.end(),p.begin(),towlower);return p;};
+    auto extended=[](const std::wstring& p){return p.rfind(L"\\\\?\\",0)==0 ? p : (p.rfind(L"\\\\",0)==0 ? L"\\\\?\\UNC\\"+p.substr(2) : L"\\\\?\\"+p);};
+    for(const auto& root:roots) {
+        std::error_code ec;auto absolute=fs::absolute(root,ec).lexically_normal().wstring();
+        if(!ec)pending.push_back(absolute);
+    }
+    while(!pending.empty() && !(cancel && cancel->load())) {
+        auto dir=std::move(pending.back());pending.pop_back();
+        if(!visited.insert(key(dir)).second)continue;
+        DWORD attrs=GetFileAttributesW(extended(dir).c_str());
+        if(attrs==INVALID_FILE_ATTRIBUTES || !(attrs&FILE_ATTRIBUTE_DIRECTORY) || (attrs&FILE_ATTRIBUTE_REPARSE_POINT))continue;
+        if(dir.back()!=L'\\')dir+=L'\\';
+        WIN32_FIND_DATAW entry{};HANDLE find=FindFirstFileW((extended(dir)+L"*").c_str(),&entry);
+        if(find==INVALID_HANDLE_VALUE)continue;
+        do {
+            if(cancel && cancel->load())break;
+            std::wstring name=entry.cFileName;
+            if(name==L"." || name==L".." || (entry.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT))continue;
+            auto full=dir+name;
+            if(entry.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)pending.push_back(full);
+            else if(_wcsicmp(name.c_str(),L"g++.exe")==0 && files.insert(key(full)).second)found.push_back(full);
+        }while(FindNextFileW(find,&entry));
+        FindClose(find);
+    }
+    std::sort(found.begin(),found.end(),[&](const auto& a,const auto& b){return key(a)<key(b);});
+    return found;
+}
+bool FindGpp(const std::vector<std::wstring>& roots,std::wstring& out) {
+    auto found=FindGpps(roots);if(found.empty())return false;out=found.front();return true;
 }
 
 RunResult RunProcess(const std::wstring& exe,
