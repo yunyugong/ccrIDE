@@ -8,6 +8,8 @@ import shutil
 import subprocess
 import zipfile
 import struct
+import re
+from urllib.parse import quote
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--stage', required=True)
@@ -74,9 +76,25 @@ for header in (deps / 'imgui/backends').glob('*.h'):
 shutil.copytree(deps / 'nlohmann/nlohmann', sdk / 'nlohmann/nlohmann')
 for name in ('plugin_api.h','i18n.h','i18n_catalog.inc'):
     shutil.copy2(repo/'src'/name,sdk/'include'/name)
-shutil.copy2(repo/'README.en.md',bundle/'README.en.md')
+for name in ('README.md','README.en.md','CONTRIBUTING.md'):
+    shutil.copy2(repo/name,bundle/name)
 shutil.copytree(repo/'docs',bundle/'docs')
 shutil.copytree(repo/'locales',bundle/'locales')
+# Keep the API header link usable offline; source-only references open GitHub.
+api_doc=bundle/'docs/plugin-api.md'
+api_doc.write_text(api_doc.read_text(encoding='utf-8').replace('../src/plugin_api.h','../sdk/include/plugin_api.h'),encoding='utf-8')
+for document in list((bundle/'docs').glob('*.md'))+list(bundle.glob('*.md')):
+    def resolve_doc_link(match):
+        link=match.group(1)
+        if '://' in link or link.startswith('#'):return match.group(0)
+        path,separator,anchor=link.partition('#')
+        if (document.parent/path).exists():return match.group(0)
+        source=(repo/document.relative_to(bundle).parent/path).resolve()
+        if source.is_relative_to(repo) and source.exists():
+            return ']('+f'https://github.com/yunyugong/ccrIDE/blob/main/{quote(source.relative_to(repo).as_posix())}'+(separator+anchor if separator else '')+')'
+        return match.group(0)
+    document.write_text(re.sub(r'\]\(([^)]+)\)',resolve_doc_link,document.read_text(encoding='utf-8')),encoding='utf-8')
+
 licenses = bundle / 'licenses'
 licenses.mkdir()
 shutil.copy2(deps / 'imgui/LICENSE.txt', licenses / 'imgui-LICENSE.txt')
