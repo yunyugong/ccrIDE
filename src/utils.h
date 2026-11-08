@@ -70,7 +70,7 @@ bool PreferencesFileDialog(bool save,const std::wstring& initialDir,std::wstring
 
 // ---- HTTP (WinINet) ----
 // GET 一个 URL, 成功返回 true; out 为响应体
-bool HttpGet(const std::string& url, std::string& out, std::string& errMsg,const std::string& apiKey = {});
+bool HttpGet(const std::string& url, std::string& out, std::string& errMsg,const std::string& apiKey = {}, size_t maxBytes = 128u*1024u*1024u);
 // POST JSON, 返回响应体
 bool HttpPostJson(const std::string& url, const std::string& jsonBody, const std::string& apiKey, std::string& out, std::string& errMsg);
 // POST JSON 流式 (SSE): chunkCb 返回增量文本片段; done 为 true 时表示结束 (最后一次回调)

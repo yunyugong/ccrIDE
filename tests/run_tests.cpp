@@ -27,6 +27,8 @@
 #include <thread>
 #include <atomic>
 #include <filesystem>
+#include "i18n.h"
+#include "community.h"
 #include "app.h"          // g_app / Console / App
 #include "editor.h"
 #include "symbol_index.h"
@@ -563,7 +565,7 @@ static void TestCustomization(){
     CHECK(!loaded.showToolbar&&!loaded.showStatusBar&&!loaded.showActivityBar);
     CHECK(prefs.ExportPreferences(file,error));std::string text;CHECK(utils::ReadFileU8(file,text));
     CHECK(text.find("PRIVATE_")==std::string::npos&&text.find("secret")==std::string::npos);
-    auto exported=nlohmann::json::parse(text);CHECK(exported["preferences"].size()==37);
+    auto exported=nlohmann::json::parse(text);CHECK(exported["preferences"].size()==38);
     Settings imported;imported.gppPath="keep-toolchain";imported.runEnvironment="KEEP=value";imported.runTimeLimitMs=1234;
     imported.disabledPlugins={"keep-plugin"};CHECK(imported.ImportPreferences(file,error));
     CHECK(imported.tabWidth==2&&imported.hotkeys==prefs.hotkeys&&imported.editorColors==prefs.editorColors);
@@ -723,7 +725,7 @@ static void TestManagedCompileRun() {
     CHECK(buildLog.find("workflow-ok")==std::string::npos);
     CHECK(terminalLog.find("workflow-ok")!=std::string::npos);
     CHECK(g_app.showTerminal && g_app.focusTerminal);
-    CHECK(logs.find("退出码 0") != std::string::npos);
+    CHECK(logs.find(i18n::IsEnglish()?"exit code 0":"退出码 0") != std::string::npos);
     CHECK(!g_app.procBusy.load() && !g_app.runInteractive.load());
     CHECK(!fs::exists(dir / L"build_out.txt") && !fs::exists(dir / L"build_err.txt"));
     bool taskLogs=false;
@@ -1217,6 +1219,39 @@ static void TestCompletionPopupLayout() {
 }
 
 
+static void TestInternationalizationAndCommunity(){
+    CHECK_EQ(std::string(i18n::ResolveLanguage("auto",MAKELANGID(LANG_ENGLISH,SUBLANG_ENGLISH_US))),std::string("en"));
+    CHECK_EQ(std::string(i18n::ResolveLanguage("auto",MAKELANGID(LANG_CHINESE,SUBLANG_CHINESE_SIMPLIFIED))),std::string("zh-CN"));
+    CHECK_EQ(std::string(i18n::ResolveLanguage("zh-CN",MAKELANGID(LANG_ENGLISH,SUBLANG_ENGLISH_US))),std::string("zh-CN"));
+    i18n::SetLanguage("en");CHECK_EQ(std::string(i18n::Tr("设置")),std::string("Settings"));
+    CHECK(ImHashStr(i18n::Window("设置"))==ImHashStr("设置"));
+    CHECK(ImHashStr(i18n::Window("Settings"))==ImHashStr("设置"));
+    CHECK_EQ(std::string(i18n::Tr("untouched.cpp")),std::string("untouched.cpp"));
+    const char* combo=i18n::Tr("紧凑\0标准\0宽松\0");CHECK_EQ(std::string(combo),std::string("Compact"));
+    CHECK_EQ(std::string(combo+strlen(combo)+1),std::string("Standard"));
+    Settings setting;CHECK_EQ(setting.language,std::string("auto"));setting.language="invalid";setting.Normalize();CHECK_EQ(setting.language,std::string("auto"));
+    auto file=std::filesystem::temp_directory_path()/(L"ccride-language-"+std::to_wstring(GetCurrentProcessId())+L".json");
+    std::string error;setting.language="en";CHECK(setting.Save(file.wstring()));Settings loaded;CHECK(loaded.Load(file.wstring()));CHECK_EQ(loaded.language,std::string("en"));
+    CHECK(setting.ExportPreferences(file.wstring(),error));loaded.language="zh-CN";CHECK(loaded.ImportPreferences(file.wstring(),error));CHECK_EQ(loaded.language,std::string("en"));std::filesystem::remove(file);
+    CHECK_EQ(community::ParseConfig("{\"schema\":1}").repository,std::string("https://github.com/yunyugong/ccrIDE"));
+    auto rejects=[](const std::function<void()>& f){try{f();return false;}catch(...){return true;}};
+    CHECK(rejects([](){community::ParseConfig("{\"schema\":2}");}));
+    CHECK(rejects([](){community::ParseConfig("{\"schema\":1,\"issues\":\"file:///C:/bad\"}");}));
+    CHECK(rejects([](){community::ParseConfig("{\"schema\":1,\"issues\":\"https://user@github.com/x\"}");}));
+    CHECK(community::DownloadUrl("http://127.0.0.1:1234/package.zip"));CHECK(!community::DownloadUrl("http://example.com/package.zip"));
+    CHECK(!community::DownloadUrl("http://localhost:1234@evil.example/x"));
+    nlohmann::json entry={{"id","probe"},{"name","Probe"},{"version","1.0"},{"entry","probe.dll"},{"apiVersion",2},{"packageUrl","https://github.com/example/repo/releases/download/v1/probe.zip"},{"sha256",std::string(64,'a')}};
+    auto catalog=[&](const nlohmann::json& item){return nlohmann::json{{"schema",1},{"plugins",nlohmann::json::array({item})}}.dump();};
+    CHECK(community::ParseMarket(catalog(entry)).size()==1);
+    CHECK_EQ(community::ParseMarket(catalog(entry))[0].packageUrl,entry["packageUrl"].get<std::string>());
+    for(auto id:{"../escape","bad/name","x:ads",""}){auto invalid=entry;invalid["id"]=id;CHECK(rejects([&](){community::ParseMarket(catalog(invalid));}));}
+    for(auto pair:{std::pair<const char*,const char*>{"sha256","bad"},{"packageUrl","http://example.com/bad.zip"},{"entry","../bad.dll"}}){auto invalid=entry;invalid[pair.first]=pair.second;CHECK(rejects([&](){community::ParseMarket(catalog(invalid));}));}
+    auto invalid=entry;invalid["apiVersion"]=99;CHECK(rejects([&](){community::ParseMarket(catalog(invalid));}));
+    invalid=entry;invalid["dllUrl"]="https://example.com/probe.dll";CHECK(rejects([&](){community::ParseMarket(catalog(invalid));}));
+    CHECK(rejects([&](){community::ParseMarket(nlohmann::json{{"schema",1},{"plugins",nlohmann::json::array({entry,entry})}}.dump());}));
+    i18n::SetLanguage("zh-CN");CHECK_EQ(std::string(i18n::Tr("设置")),std::string("设置"));
+}
+
 static int CheckPortablePackage() {
     if (!g_app.Init() || !g_app.portableMode) return 10;
     auto root = std::filesystem::path(g_app.executableDir);
@@ -1239,7 +1274,7 @@ static int CheckPortablePackage() {
     std::string logs; for (const auto& line : g_app.console.lines) logs += line.text;
         for (const auto& line : g_app.terminal.lines) logs += line.text;
     CHECK(logs.find("portable-package-ok 3") != std::string::npos);
-    CHECK(logs.find("退出码 0") != std::string::npos);
+    CHECK(logs.find(i18n::IsEnglish()?"exit code 0":"退出码 0") != std::string::npos);
     bool vectorHeader=false;
     for(auto& dir:SymbolIndex::I().IncludeDirs())if(std::filesystem::is_regular_file(std::filesystem::path(dir)/L"vector"))vectorHeader=true;
     CHECK(vectorHeader);
@@ -1398,18 +1433,18 @@ static int CheckLocalPluginArchives(const std::filesystem::path& archives,const 
     auto finish=[&]() {g_app.plugins.UnloadAll();ImGui::DestroyContext();std::error_code e;fs::remove_all(root,e);};
     CHECK(!g_app.plugins.HasCompletionProvider());
     std::string error;
-    CHECK(g_app.plugins.InstallLocalArchive((archives/"completion-docs-v1.0.0.zip").wstring(),error));
+    CHECK(g_app.plugins.InstallLocalArchive((archives/"completion-docs-v1.0.1.zip").wstring(),error));
     CHECK(g_app.plugins.HasCompletionProvider());
     g_app.settings.disabledPlugins.push_back("completion-docs");g_app.plugins.ReloadAll();CHECK(!g_app.plugins.HasCompletionProvider());
     CodeEditor editor;editor.SetText("// plugin comment\nint pluginCount;\nvoid f(){ pluginCou");editor.RebuildLines();editor.m_cursor=editor.m_text.size();editor.OpenCompletion();
     CHECK(!editor.m_compItems.empty());for(auto& item:editor.m_compItems)CHECK(item.doc.empty());
     g_app.settings.disabledPlugins.clear();g_app.plugins.ReloadAll();CHECK(g_app.plugins.HasCompletionProvider());
-    auto aiArchive=archives/"ai-assistant-v1.2.0.zip";
+    auto aiArchive=archives/"ai-assistant-v1.2.1.zip";
     CHECK(g_app.plugins.InstallLocalArchive(aiArchive.wstring(),error));
     CHECK(fs::is_regular_file(root/"plugins/ai-assistant/ai-service.exe"));
     bool aiLoaded=false;for(auto& plugin:g_app.plugins.plugins)if(plugin.id=="ai-assistant" && plugin.loaded)aiLoaded=true;CHECK(aiLoaded);
     CHECK(fs::is_regular_file(root/"data/plugins/ai-assistant/settings.json"));
-    CHECK(!g_app.plugins.InstallLocalArchive((archives/"completion-docs-v1.0.0.zip").wstring(),error));
+    CHECK(!g_app.plugins.InstallLocalArchive((archives/"completion-docs-v1.0.1.zip").wstring(),error));
     CHECK(g_app.plugins.Uninstall("completion-docs",error));CHECK(!g_app.plugins.HasCompletionProvider());CHECK(!fs::exists(root/"plugins/completion-docs"));
     CHECK(g_app.plugins.Uninstall("ai-assistant",error));CHECK(g_app.plugins.plugins.empty());
     finish();std::printf("Local plugin packages: %d passed, %d failed\n",g_pass,g_fail);return g_fail?1:0;
@@ -1421,7 +1456,7 @@ static int CheckRemotePluginInstall(const std::string& url) {
     fs::create_directories(root);
     g_app.pluginDir=(root/"plugins").wstring();
     ImGui::CreateContext();
-    MarketItem item;item.id="remote-docs";item.name="Remote documentation";item.entry="completion-docs.dll";item.apiVersion=2;item.dllUrl=url+"/plugin.dll";
+    MarketItem item;item.id="remote-docs";item.name="Remote documentation";item.entry="completion-docs.dll";item.apiVersion=2;item.dllUrl=url+"/plugin.dll";std::string digest,error;CHECK(utils::HttpGet(url+"/digest",digest,error));item.sha256=digest;
     g_app.plugins.RequestInstall(item);g_app.plugins.Shutdown();g_app.plugins.PumpNetResults();
     std::string manifest;CHECK(utils::ReadFileU8((root/"plugins/remote-docs/plugin.json").wstring(),manifest));
     auto j=nlohmann::json::parse(manifest);CHECK(j.value("apiVersion",0)==2);
@@ -1448,9 +1483,23 @@ static int CheckRemotePluginInstall(const std::string& url) {
     utils::WriteFileU8((root/"plugins/remote-docs/plugin.json").wstring(),j.dump());
     g_app.plugins.ScanAndLoad();
     CHECK(g_app.plugins.plugins.size()==1 && !g_app.plugins.plugins[0].loaded && !g_app.plugins.plugins[0].loadError.empty());
-    g_app.plugins.UnloadAll();ImGui::DestroyContext();
-    CHECK(std::distance(fs::directory_iterator(root/"plugins"),fs::directory_iterator{})==1);
-    fs::remove_all(root);
+    g_app.plugins.UnloadAll();
+    auto oldMarket=g_app.settings.marketUrl;g_app.settings.marketUrl=url+"/catalog.json";
+    g_app.plugins.RequestFetchRemote();g_app.plugins.Shutdown();g_app.plugins.PumpNetResults();
+    auto found=std::find_if(g_app.plugins.catalog.begin(),g_app.plugins.catalog.end(),[](const MarketItem& x){return x.id=="zip-docs";});
+    CHECK(found!=g_app.plugins.catalog.end());
+    if(found!=g_app.plugins.catalog.end()){
+        MarketItem zip=*found;g_app.plugins.RequestInstall(zip);g_app.plugins.Shutdown();g_app.plugins.PumpNetResults();
+        CHECK(fs::is_regular_file(root/"plugins/zip-docs/completion-docs.dll"));
+        g_app.plugins.ScanAndLoad();CHECK(g_app.plugins.HasCompletionProvider());g_app.plugins.UnloadAll();
+        zip.id="manifest-mismatch";g_app.plugins.RequestInstall(zip);g_app.plugins.Shutdown();CHECK(g_app.plugins.m_msgs.front().kind==NetKind::InstallFail);g_app.plugins.PumpNetResults();CHECK(!fs::exists(root/"plugins/manifest-mismatch"));
+        zip.id="bad-checksum";zip.sha256=std::string(64,'0');g_app.plugins.RequestInstall(zip);g_app.plugins.Shutdown();CHECK(g_app.plugins.m_msgs.front().kind==NetKind::InstallFail);g_app.plugins.PumpNetResults();CHECK(!fs::exists(root/"plugins/bad-checksum"));
+    }
+    std::string body;CHECK(!utils::HttpGet(url+"/plugin.dll",body,error,{},16));CHECK(body.empty());
+    CHECK(!utils::HttpGet(url+"/truncated",body,error));CHECK(body.empty());
+    g_app.settings.marketUrl=oldMarket;
+    CHECK(std::distance(fs::directory_iterator(root/"plugins"),fs::directory_iterator{})==2);
+    ImGui::DestroyContext();fs::remove_all(root);
     std::printf("Remote plugin installation: %d passed, %d failed\n",g_pass,g_fail);return g_fail?1:0;
 }
 
@@ -1531,6 +1580,7 @@ int main(int argc, char** argv) {
     TestSymbolIndex();
     TestSettingsRoundTrip();
     TestCustomization();
+    TestInternationalizationAndCommunity();
     TestIndependentEditorFeatures();
     TestProcStatusThreadSafe();
     TestCommentLinks();

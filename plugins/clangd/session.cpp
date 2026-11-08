@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "session.h"
 #include "lsp_support.h"
 #include "utils.h"
@@ -25,10 +26,10 @@ void Session::Request(const std::string& kind,const std::string& file,unsigned l
 }
 std::vector<json> Session::Poll(){std::lock_guard<std::mutex> lock(mutex);std::vector<json> result;for(int i=0;i<12&&!events.empty();++i){result.push_back(std::move(events.front()));events.pop_front();}return result;}
 void Session::Start(Config config) {
-    Stop();cancel=false;Event({{"kind","status"},{"ready",false},{"message","正在启动 clangd…"}});
+    Stop();cancel=false;Event({{"kind","status"},{"ready",false},{"message",i18n::Tr("正在启动 clangd…")}});
     worker=std::thread([this,config](){
         try {
-            if(!fs::is_regular_file(config.executable)){Event({{"kind","status"},{"ready",false},{"message","未找到 clangd，请在插件设置中指定路径"}});return;}
+            if(!fs::is_regular_file(config.executable)){Event({{"kind","status"},{"ready",false},{"message",i18n::Tr("未找到 clangd，请在插件设置中指定路径")}});return;}
             struct Doc {std::string text;unsigned long long revision=0,parsedRevision=0;};
             struct Pending {std::string kind,file,text;unsigned long long revision;size_t offset;ULONGLONG time;};
             std::map<std::string,Doc> docs;std::map<std::string,json> deferred;std::map<long long,Pending> pending;long long next=1;
@@ -65,7 +66,7 @@ void Session::Start(Config config) {
                 if(id==1) {
                     if(message.contains("error") || !message.contains("result"))throw std::runtime_error("Initialize failed");
                     if(message["result"].value("capabilities",json::object()).value("positionEncoding",std::string("utf-16"))!="utf-16")throw std::runtime_error("Unsupported position encoding");
-                    initialized=true;notify("initialized",json::object());Event({{"kind","status"},{"ready",true},{"message","clangd 已连接"}});return;
+                    initialized=true;notify("initialized",json::object());Event({{"kind","status"},{"ready",true},{"message",i18n::Tr("clangd 已连接")}});return;
                 }
                 auto it=pending.find(id);if(it==pending.end())return;auto p=std::move(it->second);pending.erase(it);
                 auto current=docs.find(p.file);if(current==docs.end()||current->second.revision!=p.revision)return;
@@ -118,7 +119,7 @@ void Session::Start(Config config) {
             request.capture=false;request.interactive=true;request.cancel=&cancel;request.limits.timeMs=0;request.limits.memoryBytes=config.memoryMiB*1024*1024;request.limits.outputBytes=1024ull*1024*1024;
             request.onOutput=[&](const std::string& bytes,bool errorChannel){
                 try {auto now=GetTickCount64();if(now-rateStart>=1000){rateStart=now;rateBytes=0;}rateBytes+=bytes.size();if(rateBytes>16*1024*1024)throw std::runtime_error("LSP rate limit");if(!errorChannel)framer.Feed(bytes,reply);}
-                catch(...){cancel=true;Event({{"kind","status"},{"ready",false},{"message","clangd 返回无效或超限消息，已停止，可手动重启"}});}
+                catch(...){cancel=true;Event({{"kind","status"},{"ready",false},{"message",i18n::Tr("clangd 返回无效或超限消息，已停止，可手动重启")}});}
             };
             request.pollInput=[&](){
                 try {
@@ -164,8 +165,8 @@ void Session::Start(Config config) {
             };
             auto result=execution::Run(request);
             for(const auto& p:pending)failed(p.second);
-            Event({{"kind","status"},{"ready",false},{"message",std::string("clangd 已停止，可在插件设置中重启: ")+execution::ReasonText(result.reason)}});
-        }catch(...) {Event({{"kind","status"},{"ready",false},{"message","clangd 启动或协议处理失败，请检查配置后重试"}});}
+            Event({{"kind","status"},{"ready",false},{"message",std::string(i18n::Tr("clangd 已停止，可在插件设置中重启: "))+execution::ReasonText(result.reason)}});
+        }catch(...) {Event({{"kind","status"},{"ready",false},{"message",i18n::Tr("clangd 启动或协议处理失败，请检查配置后重试")}});}
     });
 }
 }

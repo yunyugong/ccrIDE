@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "utils.h"
 #include <shlwapi.h>
 #include <commdlg.h>
@@ -267,14 +268,14 @@ RunResult RunProcess(const std::wstring& exe,
     if (executed.reason != execution::Reason::Exited) {
         if (!result.error.empty()) result.error += " ";
         result.error += execution::ReasonText(executed.reason);
-        result.err += "\n[执行] " + result.error + "\n";
+        result.err += i18n::Tr("\n[执行] ") + result.error + "\n";
     }
     // Logs are bounded by the execution limit rather than unbounded file redirection.
     if ((!outFile.empty()&&!WriteFileU8(outFile, result.out)) || (!errFile.empty()&&!WriteFileU8(errFile, result.err))) {
-        result.error += " 无法保存执行日志";
+        result.error += i18n::Tr(" 无法保存执行日志");
         result.reason = execution::Reason::IoError;
         result.exitCode = -1;
-        result.err += "\n[执行] 无法保存执行日志\n";
+        result.err += i18n::Tr("\n[执行] 无法保存执行日志\n");
     }
     return result;
 }
@@ -297,7 +298,7 @@ bool SaveFileDialog(const std::wstring& initialDir, const std::wstring& defName,
     OPENFILENAMEW ofn{};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = nullptr;
-    ofn.lpstrFilter = L"C++ 源文件 (*.cpp;*.c;*.h;*.hpp)\0*.cpp;*.c;*.h;*.hpp\0所有文件 (*.*)\0*.*\0";
+    ofn.lpstrFilter = i18n::Wide(L"C++ 源文件 (*.cpp;*.c;*.h;*.hpp)\0*.cpp;*.c;*.h;*.hpp\0所有文件 (*.*)\0*.*\0",L"C++ Source Files (*.cpp;*.c;*.h;*.hpp)\0*.cpp;*.c;*.h;*.hpp\0All Files (*.*)\0*.*\0");
     ofn.lpstrFile = fileBuf;
     ofn.nMaxFile = MAX_PATH;
     ofn.lpstrInitialDir = dirBuf;
@@ -316,7 +317,7 @@ bool OpenFileDialog(const std::wstring& initialDir, std::wstring& outPath) {
     OPENFILENAMEW ofn{};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = nullptr;
-    ofn.lpstrFilter = L"C++ 源文件 (*.cpp;*.c;*.h;*.hpp)\0*.cpp;*.c;*.h;*.hpp\0所有文件 (*.*)\0*.*\0";
+    ofn.lpstrFilter = i18n::Wide(L"C++ 源文件 (*.cpp;*.c;*.h;*.hpp)\0*.cpp;*.c;*.h;*.hpp\0所有文件 (*.*)\0*.*\0",L"C++ Source Files (*.cpp;*.c;*.h;*.hpp)\0*.cpp;*.c;*.h;*.hpp\0All Files (*.*)\0*.*\0");
     ofn.lpstrFile = fileBuf;
     ofn.nMaxFile = MAX_PATH;
     ofn.lpstrInitialDir = dirBuf;
@@ -329,7 +330,7 @@ bool OpenFileDialog(const std::wstring& initialDir, std::wstring& outPath) {
 bool PreferencesFileDialog(bool save,const std::wstring& initialDir,std::wstring& outPath) {
     wchar_t file[32768]=L"ccrIDE-preferences.json";
     OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);
-    dialog.lpstrFilter=L"ccrIDE 偏好 (*.json)\0*.json\0所有文件 (*.*)\0*.*\0";
+    dialog.lpstrFilter=i18n::Wide(L"ccrIDE 偏好 (*.json)\0*.json\0所有文件 (*.*)\0*.*\0",L"ccrIDE Preferences (*.json)\0*.json\0All Files (*.*)\0*.*\0");
     dialog.lpstrFile=file;dialog.nMaxFile=32768;
     dialog.lpstrInitialDir=initialDir.empty()?nullptr:initialDir.c_str();
     dialog.lpstrDefExt=L"json";dialog.Flags=OFN_EXPLORER|OFN_PATHMUSTEXIST|(save?OFN_OVERWRITEPROMPT:OFN_FILEMUSTEXIST);
@@ -360,7 +361,7 @@ static bool HttpStatusOk(HINTERNET req, std::string& errMsg) {
         char buf[1024];
         DWORD got = 0;
         while (InternetReadFile(req, buf, sizeof(buf), &got) && got > 0)
-            tail.append(buf, got);
+            {tail.append(buf, got);if(tail.size()>=8192)break;}
         size_t keep = 160;
         if (tail.size() > keep) tail = tail.substr(tail.size() - keep);
         auto trim = [&](std::string s) {
@@ -418,27 +419,27 @@ static HINTERNET OpenInet(const std::string& host) {
                          nullptr, nullptr, 0);
 }
 
-bool HttpGet(const std::string& url, std::string& out, std::string& errMsg,const std::string& apiKey) {
+bool HttpGet(const std::string& url, std::string& out, std::string& errMsg,const std::string& apiKey,size_t maxBytes) {
     std::string scheme, host, path;
     INTERNET_PORT port;
     if (!UrlToParts(url, scheme, host, port, path)) {
-        errMsg = "URL 格式错误";
+        errMsg = i18n::Tr("URL 格式错误");
         return false;
     }
     HINTERNET inet = OpenInet(host);
-    if (!inet) { errMsg = "InternetOpen 失败"; return false; }
+    if (!inet) { errMsg = i18n::Tr("InternetOpen 失败"); return false; }
     SetInetTimeouts(inet);
     DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE;
     if (scheme == "https") flags |= INTERNET_FLAG_SECURE;
     HINTERNET conn = InternetConnectW(inet, U8ToW(host).c_str(), port, nullptr, nullptr,
                                       INTERNET_SERVICE_HTTP, 0, 0);
-    if (!conn) { errMsg = "InternetConnect 失败"; InternetCloseHandle(inet); return false; }
+    if (!conn) { errMsg = i18n::Tr("InternetConnect 失败"); InternetCloseHandle(inet); return false; }
     HINTERNET req = HttpOpenRequestW(conn, L"GET", U8ToW(path).c_str(), nullptr, nullptr, nullptr,
                                      flags, 0);
-    if (!req) { errMsg = "HttpOpenRequest 失败"; InternetCloseHandle(conn); InternetCloseHandle(inet); return false; }
+    if (!req) { errMsg = i18n::Tr("HttpOpenRequest 失败"); InternetCloseHandle(conn); InternetCloseHandle(inet); return false; }
     std::wstring headers=apiKey.empty() ? L"" : L"Authorization: Bearer "+U8ToW(apiKey)+L"\r\n";
     if (!HttpSendRequestW(req,headers.empty() ? nullptr : headers.c_str(),(DWORD)headers.size(),nullptr,0)) {
-        errMsg = "HttpSendRequest 失败: " + WToU8(GetLastError() ? std::to_wstring(GetLastError()) : L"");
+        errMsg = i18n::Tr("HttpSendRequest 失败: ") + WToU8(GetLastError() ? std::to_wstring(GetLastError()) : L"");
         InternetCloseHandle(req); InternetCloseHandle(conn); InternetCloseHandle(inet);
         return false;
     }
@@ -446,14 +447,25 @@ bool HttpGet(const std::string& url, std::string& out, std::string& errMsg,const
         InternetCloseHandle(req); InternetCloseHandle(conn); InternetCloseHandle(inet);
         return false;
     }
+    char lengthHeader[32]{};DWORD lengthSize=sizeof(lengthHeader);
+    bool knownLength=HttpQueryInfoA(req,HTTP_QUERY_CONTENT_LENGTH,lengthHeader,&lengthSize,nullptr)!=FALSE;
+    unsigned long long expectedLength=0;
+    if(knownLength){char* end=nullptr;expectedLength=strtoull(lengthHeader,&end,10);knownLength=end&&*end=='\0';}
     char buf[8192];
     DWORD read = 0;
     out.clear();
-    while (InternetReadFile(req, buf, sizeof(buf), &read) && read > 0) {
-        out.append(buf, read);
+    bool ok=true;auto started=GetTickCount64();
+    while(true){
+        if(GetTickCount64()-started>120000){errMsg="Download timed out";ok=false;break;}
+        if(!InternetReadFile(req,buf,sizeof(buf),&read)){errMsg="Download interrupted";ok=false;break;}
+        if(!read)break;
+        if(read>maxBytes-out.size()){errMsg="Download exceeds size limit";ok=false;break;}
+        out.append(buf,read);
     }
+    if(ok&&knownLength&&out.size()!=expectedLength){errMsg="Incomplete download";ok=false;}
+    if(!ok)out.clear();
     InternetCloseHandle(req); InternetCloseHandle(conn); InternetCloseHandle(inet);
-    return true;
+    return ok;
 }
 
 bool HttpPostJson(const std::string& url, const std::string& jsonBody, const std::string& apiKey,
@@ -461,20 +473,20 @@ bool HttpPostJson(const std::string& url, const std::string& jsonBody, const std
     std::string scheme, host, path;
     INTERNET_PORT port;
     if (!UrlToParts(url, scheme, host, port, path)) {
-        errMsg = "URL 格式错误";
+        errMsg = i18n::Tr("URL 格式错误");
         return false;
     }
     HINTERNET inet = OpenInet(host);
-    if (!inet) { errMsg = "InternetOpen 失败"; return false; }
+    if (!inet) { errMsg = i18n::Tr("InternetOpen 失败"); return false; }
     SetInetTimeouts(inet);
     DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_KEEP_CONNECTION;
     if (scheme == "https") flags |= INTERNET_FLAG_SECURE;
     HINTERNET conn = InternetConnectW(inet, U8ToW(host).c_str(), port, nullptr, nullptr,
                                       INTERNET_SERVICE_HTTP, 0, 0);
-    if (!conn) { errMsg = "InternetConnect 失败"; InternetCloseHandle(inet); return false; }
+    if (!conn) { errMsg = i18n::Tr("InternetConnect 失败"); InternetCloseHandle(inet); return false; }
     HINTERNET req = HttpOpenRequestW(conn, L"POST", U8ToW(path).c_str(), nullptr, nullptr, nullptr,
                                      flags, 0);
-    if (!req) { errMsg = "HttpOpenRequest 失败"; InternetCloseHandle(conn); InternetCloseHandle(inet); return false; }
+    if (!req) { errMsg = i18n::Tr("HttpOpenRequest 失败"); InternetCloseHandle(conn); InternetCloseHandle(inet); return false; }
 
     std::string headers = "Content-Type: application/json\r\nAccept: text/event-stream\r\n";
     if (!apiKey.empty()) headers += "Authorization: Bearer " + apiKey + "\r\n";
@@ -483,7 +495,7 @@ bool HttpPostJson(const std::string& url, const std::string& jsonBody, const std
     std::wstring wHeaders = U8ToW(headers);
     if (!HttpSendRequestW(req, wHeaders.c_str(), (DWORD)wHeaders.size(),
                           (LPVOID)jsonBody.data(), (DWORD)jsonBody.size())) {
-        errMsg = "HttpSendRequest 失败: " + WToU8(GetLastError() ? std::to_wstring(GetLastError()) : L"");
+        errMsg = i18n::Tr("HttpSendRequest 失败: ") + WToU8(GetLastError() ? std::to_wstring(GetLastError()) : L"");
         InternetCloseHandle(req); InternetCloseHandle(conn); InternetCloseHandle(inet);
         return false;
     }
@@ -546,20 +558,20 @@ bool HttpPostJsonStream(const std::string& url, const std::string& jsonBody, con
     std::string scheme, host, path;
     INTERNET_PORT port;
     if (!UrlToParts(url, scheme, host, port, path)) {
-        errMsg = "URL 格式错误";
+        errMsg = i18n::Tr("URL 格式错误");
         return false;
     }
     HINTERNET inet = OpenInet(host);
-    if (!inet) { errMsg = "InternetOpen 失败"; return false; }
+    if (!inet) { errMsg = i18n::Tr("InternetOpen 失败"); return false; }
     SetInetTimeouts(inet);
     DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_KEEP_CONNECTION;
     if (scheme == "https") flags |= INTERNET_FLAG_SECURE;
     HINTERNET conn = InternetConnectW(inet, U8ToW(host).c_str(), port, nullptr, nullptr,
                                       INTERNET_SERVICE_HTTP, 0, 0);
-    if (!conn) { errMsg = "InternetConnect 失败"; InternetCloseHandle(inet); return false; }
+    if (!conn) { errMsg = i18n::Tr("InternetConnect 失败"); InternetCloseHandle(inet); return false; }
     HINTERNET req = HttpOpenRequestW(conn, L"POST", U8ToW(path).c_str(), nullptr, nullptr, nullptr,
                                      flags, 0);
-    if (!req) { errMsg = "HttpOpenRequest 失败"; InternetCloseHandle(conn); InternetCloseHandle(inet); return false; }
+    if (!req) { errMsg = i18n::Tr("HttpOpenRequest 失败"); InternetCloseHandle(conn); InternetCloseHandle(inet); return false; }
 
     std::string headers = "Content-Type: application/json\r\nAccept: text/event-stream\r\n";
     if (!apiKey.empty()) headers += "Authorization: Bearer " + apiKey + "\r\n";
@@ -568,7 +580,7 @@ bool HttpPostJsonStream(const std::string& url, const std::string& jsonBody, con
     std::wstring wHeaders = U8ToW(headers);
     if (!HttpSendRequestW(req, wHeaders.c_str(), (DWORD)wHeaders.size(),
                           (LPVOID)jsonBody.data(), (DWORD)jsonBody.size())) {
-        errMsg = "HttpSendRequest 失败: " + WToU8(GetLastError() ? std::to_wstring(GetLastError()) : L"");
+        errMsg = i18n::Tr("HttpSendRequest 失败: ") + WToU8(GetLastError() ? std::to_wstring(GetLastError()) : L"");
         InternetCloseHandle(req); InternetCloseHandle(conn); InternetCloseHandle(inet);
         return false;
     }
@@ -620,7 +632,7 @@ bool HttpPostJsonStream(const std::string& url, const std::string& jsonBody, con
     chunkCb(user, "", 0, true);   // 总是最终 done 回调
 
     InternetCloseHandle(req); InternetCloseHandle(conn); InternetCloseHandle(inet);
-    if (!anyChunk && errMsg.empty()) errMsg = "空流或非 SSE 响应 (请检查模型是否支持流式)";
+    if (!anyChunk && errMsg.empty()) errMsg = i18n::Tr("空流或非 SSE 响应 (请检查模型是否支持流式)");
     return anyChunk || aborted;
 }
 

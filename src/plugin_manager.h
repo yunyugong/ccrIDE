@@ -27,7 +27,7 @@ struct PluginInfo {
 
 struct MarketItem {          // 市场条目 (随附 + 远程)
     unsigned int taskCoordinatorVersion = 0;
-    std::string id, name, version, author, description, entry, dllUrl;
+    std::string id, name, version, author, description, entry, dllUrl, packageUrl;
     std::string sha256;      // DLL 摘要 (可选, 安装时校验完整性)
     unsigned int apiVersion = 1;
     bool bundled   = false;
@@ -66,7 +66,7 @@ public:
     void DrawCompletionDetails(CodeEditor& editor);
     void DrawCommands();
     void SetDockTargets(unsigned int left,unsigned int bottom,unsigned int right);
-    bool InstallLocalArchive(const std::wstring& archive,std::string& error);
+    bool InstallLocalArchive(const std::wstring& archive,std::string& error,const MarketItem* expected=nullptr,bool activate=true);
     void CallFrames();       // 每帧在主循环调用
 
     // 硬编译插件 (kind=hard) 入口由主程序编译时静态链接, 注册查找函数供扫描匹配

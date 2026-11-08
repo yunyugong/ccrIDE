@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "config.h"
 #include "utils.h"
 #include <nlohmann/json.hpp>
@@ -10,6 +11,7 @@ using nlohmann::json;
 
 namespace {
 template<class S,class F> void VisitPreferences(S& s,F visit) {
+    visit("language",s.language);
     visit("theme",s.theme);
     visit("fontSize",s.fontSize);
     visit("autoCheck",s.autoCheck);
@@ -50,16 +52,16 @@ template<class S,class F> void VisitPreferences(S& s,F visit) {
 }
 // Reject malformed preference types before applying any changes.
 void ReadPreferences(Settings& s,const json& values) {
-    if(!values.is_object())throw std::runtime_error("偏好内容必须是对象");
+    if(!values.is_object())throw std::runtime_error(i18n::Tr("偏好内容必须是对象"));
     VisitPreferences(s,[&](const char* key,auto& value){
         if(!values.contains(key))return;
         using T=std::decay_t<decltype(value)>;
         const auto& item=values.at(key);
-        if constexpr(std::is_same_v<T,bool>){if(!item.is_boolean())throw std::runtime_error(std::string(key)+" 必须为开关");}
-        else if constexpr(std::is_integral_v<T>){if(!item.is_number_integer())throw std::runtime_error(std::string(key)+" 必须为整数");}
+        if constexpr(std::is_same_v<T,bool>){if(!item.is_boolean())throw std::runtime_error(std::string(key)+i18n::Tr(" 必须为开关"));}
+        else if constexpr(std::is_integral_v<T>){if(!item.is_number_integer())throw std::runtime_error(std::string(key)+i18n::Tr(" 必须为整数"));}
         if constexpr(std::is_same_v<T,std::map<std::string,uint32_t>>){
-            if(!item.is_object()||item.size()>256)throw std::runtime_error("颜色配置无效");
-            for(auto& color:item.items())if(!color.value().is_number_integer()||color.value().get<int64_t>()<0||color.value().get<uint64_t>()>UINT32_MAX)throw std::runtime_error("颜色值无效");
+            if(!item.is_object()||item.size()>256)throw std::runtime_error(i18n::Tr("颜色配置无效"));
+            for(auto& color:item.items())if(!color.value().is_number_integer()||color.value().get<int64_t>()<0||color.value().get<uint64_t>()>UINT32_MAX)throw std::runtime_error(i18n::Tr("颜色值无效"));
         }
         value=item.get<T>();
     });
@@ -72,6 +74,7 @@ json PreferenceValues(const Settings& s) {
 }
 }
 void Settings::Normalize() {
+    if(language!="en" && language!="zh-CN")language="auto";
     fontSize=std::clamp(fontSize,12,28);
     theme=theme=="light"?"light":"dark";
     tabWidth=std::clamp(tabWidth,2,8);
@@ -95,16 +98,16 @@ void Settings::ResetPreferences() {
 bool Settings::ExportPreferences(const std::wstring& path,std::string& error) const {
     try {
         json data={{"format","ccrIDE.preferences"},{"schema",1},{"preferences",PreferenceValues(*this)}};
-        if(!utils::WriteFileU8(path,data.dump(2)))throw std::runtime_error("无法写入偏好文件");
+        if(!utils::WriteFileU8(path,data.dump(2)))throw std::runtime_error(i18n::Tr("无法写入偏好文件"));
         error.clear();return true;
     } catch(const std::exception& e){error=e.what();return false;}
 }
 bool Settings::ImportPreferences(const std::wstring& path,std::string& error) {
     try {
-        if(utils::FileSize(path)>1024*1024)throw std::runtime_error("偏好文件不能超过 1 MiB");
-        std::string text;if(!utils::ReadFileU8(path,text))throw std::runtime_error("无法读取偏好文件");
+        if(utils::FileSize(path)>1024*1024)throw std::runtime_error(i18n::Tr("偏好文件不能超过 1 MiB"));
+        std::string text;if(!utils::ReadFileU8(path,text))throw std::runtime_error(i18n::Tr("无法读取偏好文件"));
         auto data=json::parse(text);
-        if(data.value("format",std::string{})!="ccrIDE.preferences"||data.value("schema",0)!=1)throw std::runtime_error("请选择 ccrIDE 导出的偏好文件");
+        if(data.value("format",std::string{})!="ccrIDE.preferences"||data.value("schema",0)!=1)throw std::runtime_error(i18n::Tr("请选择 ccrIDE 导出的偏好文件"));
         Settings candidate=*this;
         ReadPreferences(candidate,data.at("preferences"));
         *this=std::move(candidate);error.clear();return true;

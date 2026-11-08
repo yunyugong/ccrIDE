@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include <filesystem>
 #include "debugger.h"
 #include "gdb_mi.h"
@@ -29,7 +30,7 @@ void Debugger::Command(const std::string& command,const std::string& role) {
     std::lock_guard<std::mutex> lock(mutex);
     if(state.active && commands.size()<128) {
         commands.emplace_back(command,role);
-        if(role=="execute") { state.stopped=false; state.status="执行调试命令..."; }
+        if(role=="execute") { state.stopped=false; state.status=i18n::Tr("执行调试命令..."); }
         if(role=="evaluate") state.evaluation.clear();
     }
 }
@@ -49,7 +50,7 @@ void Debugger::Record(const std::string& line) {
     Log(line+"\n");
     mi::Record record;
     try { record=mi::Parser(line).parse(); }
-    catch(const std::exception& e) { state.error=state.status="调试协议异常"; Log(e.what()); cancel.store(true); return; }
+    catch(const std::exception& e) { state.error=state.status=i18n::Tr("调试协议异常"); Log(e.what()); cancel.store(true); return; }
     std::string role;
     if(record.kind=='='&&record.cls=="thread-group-started") {
         if(inferior) CloseHandle(inferior);
@@ -90,14 +91,14 @@ void Debugger::Record(const std::string& line) {
         }
         if(role=="select") commands.emplace_back("-stack-list-variables --all-values","variables");
     }
-    if(record.cls=="running"&&(record.kind=='^'||record.kind=='*')) { state.stopped=false; state.status="调试运行中"; }
+    if(record.cls=="running"&&(record.kind=='^'||record.kind=='*')) { state.stopped=false; state.status=i18n::Tr("调试运行中"); }
     if(record.kind=='*'&&record.cls=="stopped") {
         auto reason=record.value.get("reason").text;
         if(reason=="exited-normally"||reason=="exited"||reason=="exited-signalled") {
-            state.stopped=false; state.status="调试程序已结束: "+reason;
+            state.stopped=false; state.status=i18n::Tr("调试程序已结束: ")+reason;
             commands.emplace_back("-gdb-exit","exit"); return;
         }
-        state.stopped=true; ++state.stopRevision; state.status="已暂停: "+reason;
+        state.stopped=true; ++state.stopRevision; state.status=i18n::Tr("已暂停: ")+reason;
         const auto& frame=record.value.get("frame");
         state.file=frame.get("fullname").text; if(state.file.empty()) state.file=frame.get("file").text;
         state.file=GdbUtf8(state.file);
@@ -120,7 +121,7 @@ bool Debugger::Start(const std::wstring& gdb,execution::Request target,
     cancel.store(false); pauseRequested.store(false);
     {
         std::lock_guard<std::mutex> lock(mutex);
-        state=DebugSnapshot{}; state.active=true; state.status="启动 GDB...";
+        state=DebugSnapshot{}; state.active=true; state.status=i18n::Tr("启动 GDB...");
         commands.clear(); pending.clear(); nextToken=0; startup=true; mainThread.clear(); nativePause=false;
         commands.emplace_back("-gdb-set mi-async on","setup");
         commands.emplace_back("-gdb-set pagination off","setup");
@@ -135,11 +136,11 @@ bool Debugger::Start(const std::wstring& gdb,execution::Request target,
         for(const auto& point:breakpoints) commands.emplace_back("-break-insert "+mi::Quote(GdbNative(utils::U8ToW(point.first))+":"+std::to_string(point.second)),"setup");
         if(breakpoints.empty()) commands.emplace_back("-break-insert -t main","setup");
         commands.emplace_back("-exec-run","start");
-        Log("[GDB] "+utils::WToU8(gdb)+"\n[目标] "+utils::WToU8(execution::CommandLine(target.exe,target.args))+"\n[目录] "+utils::WToU8(target.cwd)+"\n");
+        Log("[GDB] "+utils::WToU8(gdb)+i18n::Tr("\n[目标] ")+utils::WToU8(execution::CommandLine(target.exe,target.args))+i18n::Tr("\n[目录] ")+utils::WToU8(target.cwd)+"\n");
     }
     worker=std::thread([this,gdb,target,commandTimeoutMs]() {
         execution::Request request;
-        request.task=target.task;request.label="GDB 调试";request.logOutput=false;
+        request.task=target.task;request.label=i18n::Tr("GDB 调试");request.logOutput=false;
         request.exe=gdb; request.args={L"--interpreter=mi2",L"--nx",L"--quiet"};
         request.cwd=target.cwd; request.environment=target.environment;
         request.limits.timeMs=0; request.limits.outputBytes=16*1024*1024;
@@ -148,11 +149,11 @@ bool Debugger::Start(const std::wstring& gdb,execution::Request target,
             std::lock_guard<std::mutex> lock(mutex);
             if(pauseRequested.exchange(false)&&!state.stopped) {
                 if(inferior && DebugBreakProcess(inferior)) nativePause=true;
-                else { state.status="暂停失败 (Windows "+std::to_string(GetLastError())+")"; Log(state.status+"\n"); }
+                else { state.status=i18n::Tr("暂停失败 (Windows ")+std::to_string(GetLastError())+")"; Log(state.status+"\n"); }
             }
             // One outstanding command prevents executing a target after a failed setup.
             for(const auto& entry:pending) if(GetTickCount64()-entry.second.second>commandTimeoutMs) {
-                state.error=state.status="GDB 命令超时"; cancel.store(true); return std::string();
+                state.error=state.status=i18n::Tr("GDB 命令超时"); cancel.store(true); return std::string();
             }
             if(!pending.empty()||commands.empty()) return std::string();
             auto command=commands.front(); commands.pop_front();
@@ -163,7 +164,7 @@ bool Debugger::Start(const std::wstring& gdb,execution::Request target,
         request.onOutput=[this,&partial](const std::string& text,bool err) {
             if(err) { std::lock_guard<std::mutex> lock(mutex); Log(text); return; }
             partial+=text;
-            if(partial.size()>1024*1024) { std::lock_guard<std::mutex> lock(mutex); state.error=state.status="GDB 输出行过长"; cancel.store(true); partial.clear(); return; }
+            if(partial.size()>1024*1024) { std::lock_guard<std::mutex> lock(mutex); state.error=state.status=i18n::Tr("GDB 输出行过长"); cancel.store(true); partial.clear(); return; }
             size_t end;
             while((end=partial.find('\n'))!=std::string::npos) {
                 std::string line=partial.substr(0,end); partial.erase(0,end+1);
@@ -176,11 +177,11 @@ bool Debugger::Start(const std::wstring& gdb,execution::Request target,
         if(inferior) { CloseHandle(inferior); inferior=nullptr; }
         state.active=false; state.stopped=false;
         if(!state.error.empty()) state.status=state.error;
-        else if(!result.started||!result.error.empty()) state.status="GDB 启动或执行失败: "+result.error;
-        else if(result.reason==execution::Reason::Exited && result.exitCode!=0) state.status="GDB 异常退出: "+std::to_string(result.exitCode);
-        else if(result.reason!=execution::Reason::Exited && state.status.find("失败")==std::string::npos && state.status.find("超时")==std::string::npos && state.status.find("GDB:")==std::string::npos)
+        else if(!result.started||!result.error.empty()) state.status=i18n::Tr("GDB 启动或执行失败: ")+result.error;
+        else if(result.reason==execution::Reason::Exited && result.exitCode!=0) state.status=i18n::Tr("GDB 异常退出: ")+std::to_string(result.exitCode);
+        else if(result.reason!=execution::Reason::Exited && state.status.find(i18n::Tr("失败"))==std::string::npos && state.status.find(i18n::Tr("超时"))==std::string::npos && state.status.find("GDB:")==std::string::npos)
             state.status=execution::ReasonText(result.reason);
-        Log("[GDB] "+std::string(execution::ReasonText(result.reason))+"，退出码 "+std::to_string(result.exitCode)+"\n");
+        Log("[GDB] "+std::string(execution::ReasonText(result.reason))+i18n::Tr("，退出码 ")+std::to_string(result.exitCode)+"\n");
     });
     return true;
 }

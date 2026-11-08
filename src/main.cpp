@@ -1,3 +1,5 @@
+#include "i18n.h"
+#include "community.h"
 #include "language_host.h"
 #include "contest.h"
 #include "toolbar_icons.h"
@@ -51,7 +53,7 @@ static void DrawProblemsWindow();
 static void DrawActivityBar();
 static void DefaultBottomDock() {
     // First-use defaults only: user dragging/splitting and saved dock locations win.
-    auto* output = ImGui::FindWindowByName("输出");
+    auto* output = ImGui::FindWindowByName(i18n::Window("输出"));
     if (output && output->DockId) ImGui::SetNextWindowDockID(output->DockId, ImGuiCond_FirstUseEver);
 }
 
@@ -62,7 +64,7 @@ int main() {
     if (!g_app.Init()) return 1;
 
     if (!glfwInit()) {
-        MessageBoxW(nullptr, L"GLFW 初始化失败", L"ccrIDE", MB_ICONERROR);
+        MessageBoxW(nullptr, i18n::Wide(L"GLFW 初始化失败",L"GLFW initialization failed"), L"ccrIDE", MB_ICONERROR);
         return 1;
     }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -71,7 +73,7 @@ int main() {
     std::string title=std::string("ccrIDE v")+CCRIDE_VERSION;
     GLFWwindow* window = glfwCreateWindow(1280, 840, title.c_str(), nullptr, nullptr);
     if (!window) {
-        MessageBoxW(nullptr, L"窗口创建失败", L"ccrIDE", MB_ICONERROR);
+        MessageBoxW(nullptr, i18n::Wide(L"窗口创建失败",L"Cannot create window"), L"ccrIDE", MB_ICONERROR);
         glfwTerminate();
         return 1;
     }
@@ -152,7 +154,7 @@ int main() {
         // 启动后自动聚焦编辑器 (首帧后, 让用户直接打字即可)
         static bool focusEditorOnce = true;
         if (focusEditorOnce) {
-            ImGuiWindow* w = ImGui::FindWindowByName("编辑器");
+            ImGuiWindow* w = ImGui::FindWindowByName(i18n::Window("编辑器"));
             if (w) ImGui::FocusWindow(w);
             focusEditorOnce = false;
         }
@@ -351,11 +353,11 @@ static bool HotkeyDown(const char* action) {
 static void DrawMainMenuBar() {
     if (!ImGui::BeginMainMenuBar()) return;
 
-    if (ImGui::BeginMenu("文件")) {
-        if (ImGui::MenuItem("新建", HotkeyText("new").c_str())) g_app.NewFile();
-        if (ImGui::MenuItem("打开", HotkeyText("open").c_str())) g_app.OpenFileDialog();
+    if (ImGui::BeginMenu(i18n::Tr("文件"))) {
+        if (ImGui::MenuItem(i18n::Tr("新建"), HotkeyText("new").c_str())) g_app.NewFile();
+        if (ImGui::MenuItem(i18n::Tr("打开"), HotkeyText("open").c_str())) g_app.OpenFileDialog();
         // 最近打开 (MRU)
-        if (ImGui::BeginMenu("最近打开", !g_app.recentFiles.empty())) {
+        if (ImGui::BeginMenu(i18n::Tr("最近打开"), !g_app.recentFiles.empty())) {
             for (size_t i = 0; i < g_app.recentFiles.size(); i++) {
                 const std::wstring& p = g_app.recentFiles[i];
                 std::string base = utils::WToU8(utils::FileBase(p));
@@ -367,96 +369,102 @@ static void DrawMainMenuBar() {
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", utils::WToU8(p).c_str());
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("清空最近记录", nullptr, false, !g_app.recentFiles.empty())) {
+            if (ImGui::MenuItem(i18n::Tr("清空最近记录"), nullptr, false, !g_app.recentFiles.empty())) {
                 g_app.recentFiles.clear();
                 g_app.SaveRecent();
             }
             ImGui::EndMenu();
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("保存", HotkeyText("save").c_str())) g_app.SaveActive(false);
-        if (ImGui::MenuItem("另存为", HotkeyText("saveAs").c_str())) g_app.SaveActive(true);
-        if (ImGui::MenuItem("备份", HotkeyText("backup").c_str())) g_app.BackupNow();
+        if (ImGui::MenuItem(i18n::Tr("保存"), HotkeyText("save").c_str())) g_app.SaveActive(false);
+        if (ImGui::MenuItem(i18n::Tr("另存为"), HotkeyText("saveAs").c_str())) g_app.SaveActive(true);
+        if (ImGui::MenuItem(i18n::Tr("备份"), HotkeyText("backup").c_str())) g_app.BackupNow();
         ImGui::Separator();
-        if (ImGui::MenuItem("退出", "Alt+F4")) glfwSetWindowShouldClose(glfwGetCurrentContext(), GLFW_TRUE);
+        if (ImGui::MenuItem(i18n::Tr("退出"), "Alt+F4")) glfwSetWindowShouldClose(glfwGetCurrentContext(), GLFW_TRUE);
         ImGui::EndMenu();
     }
-    if (ImGui::BeginMenu("编辑")) {
+    if (ImGui::BeginMenu(i18n::Tr("编辑"))) {
         CodeEditor* ed = g_app.ActiveEditor();
-        if (ImGui::MenuItem("撤销", "Ctrl+Z", false, ed != nullptr)) ed->Undo();
-        if (ImGui::MenuItem("重做", "Ctrl+Y", false, ed != nullptr)) ed->Redo();
+        if (ImGui::MenuItem(i18n::Tr("撤销"), "Ctrl+Z", false, ed != nullptr)) ed->Undo();
+        if (ImGui::MenuItem(i18n::Tr("重做"), "Ctrl+Y", false, ed != nullptr)) ed->Redo();
         ImGui::Separator();
-        if (ImGui::MenuItem("剪切", "Ctrl+X", false, ed != nullptr)) {
+        if (ImGui::MenuItem(i18n::Tr("剪切"), "Ctrl+X", false, ed != nullptr)) {
             if (ed->m_selActive) { ImGui::SetClipboardText(ed->GetSelectionText().c_str()); ed->DeleteSelection(); }
         }
-        if (ImGui::MenuItem("复制", "Ctrl+C", false, ed != nullptr)) {
+        if (ImGui::MenuItem(i18n::Tr("复制"), "Ctrl+C", false, ed != nullptr)) {
             if (ed->m_selActive) ImGui::SetClipboardText(ed->GetSelectionText().c_str());
         }
-        if (ImGui::MenuItem("粘贴", "Ctrl+V", false, ed != nullptr)) {
+        if (ImGui::MenuItem(i18n::Tr("粘贴"), "Ctrl+V", false, ed != nullptr)) {
             const char* clip = ImGui::GetClipboardText();
             if (clip && *clip) ed->InsertText(clip);
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("全选", "Ctrl+A", false, ed != nullptr)) ed->SelectAll();
-        if (ImGui::MenuItem("查找", "Ctrl+F", false, ed != nullptr)) {
+        if (ImGui::MenuItem(i18n::Tr("全选"), "Ctrl+A", false, ed != nullptr)) ed->SelectAll();
+        if (ImGui::MenuItem(i18n::Tr("查找"), "Ctrl+F", false, ed != nullptr)) {
             ed->m_findOpen = true;
             ed->RecomputeMatches();
         }
-        if(ImGui::MenuItem("符号重命名（clangd）",nullptr,false,ed!=nullptr))language::BeginRename(*ed);
+        if(ImGui::MenuItem(i18n::Tr("符号重命名（clangd）"),nullptr,false,ed!=nullptr))language::BeginRename(*ed);
         ImGui::EndMenu();
     }
-    if (ImGui::BeginMenu("运行")) {
-        ImGui::MenuItem("任务管理",nullptr,&showTasks);
-        if (ImGui::MenuItem("编译", HotkeyText("compile").c_str(), false, !g_app.procBusy.load())) { g_app.showConsole=true; g_app.StartCompileRun(BuildAction::Compile); }
-        if (ImGui::MenuItem("编译并运行", HotkeyText("run").c_str(), false, !g_app.procBusy.load())) { g_app.showConsole = true; g_app.StartCompileRun(); }
-        if (ImGui::MenuItem("运行已编译程序", HotkeyText("runOnly").c_str(), false, !g_app.procBusy.load())) { g_app.showConsole=true; g_app.StartCompileRun(BuildAction::Run); }
-        if (ImGui::MenuItem("停止编译或运行", nullptr, false, g_app.procBusy.load())) g_app.killRequested.store(true);
+    if (ImGui::BeginMenu(i18n::Tr("运行"))) {
+        ImGui::MenuItem(i18n::Tr("任务管理"),nullptr,&showTasks);
+        if (ImGui::MenuItem(i18n::Tr("编译"), HotkeyText("compile").c_str(), false, !g_app.procBusy.load())) { g_app.showConsole=true; g_app.StartCompileRun(BuildAction::Compile); }
+        if (ImGui::MenuItem(i18n::Tr("编译并运行"), HotkeyText("run").c_str(), false, !g_app.procBusy.load())) { g_app.showConsole = true; g_app.StartCompileRun(); }
+        if (ImGui::MenuItem(i18n::Tr("运行已编译程序"), HotkeyText("runOnly").c_str(), false, !g_app.procBusy.load())) { g_app.showConsole=true; g_app.StartCompileRun(BuildAction::Run); }
+        if (ImGui::MenuItem(i18n::Tr("停止编译或运行"), nullptr, false, g_app.procBusy.load())) g_app.killRequested.store(true);
         ImGui::EndMenu();
     }
-    if(ImGui::BeginMenu("测试")){if(ImGui::MenuItem("样例、Subtask 与对拍"))showContest=true;ImGui::EndMenu();}
-    if(ImGui::BeginMenu("调试")) {
+    if(ImGui::BeginMenu(i18n::Tr("测试"))){if(ImGui::MenuItem(i18n::Tr("样例、Subtask 与对拍")))showContest=true;ImGui::EndMenu();}
+    if(ImGui::BeginMenu(i18n::Tr("调试"))) {
         auto* ed=g_app.ActiveEditor();
         auto debug=g_app.debugger.Snapshot();
-        if(ImGui::MenuItem("开始调试",HotkeyText("debug").c_str(),false,!g_app.procBusy.load()&&!debug.active)) { g_app.showDebug=true; g_app.StartCompileRun(BuildAction::Debug); }
-        if(ImGui::MenuItem("切换当前行断点","Ctrl+行号",false,ed!=nullptr)) ed->ToggleBreakpoint((int)ed->LineOf(ed->m_cursor)+1);
-        if(ImGui::MenuItem("继续",nullptr,false,debug.stopped)) g_app.debugger.Continue();
-        if(ImGui::MenuItem("步过",nullptr,false,debug.stopped)) g_app.debugger.Step();
-        if(ImGui::MenuItem("步入",nullptr,false,debug.stopped)) g_app.debugger.Step(true);
-        if(ImGui::MenuItem("停止调试",nullptr,false,debug.active)) g_app.debugger.Stop();
-        ImGui::MenuItem("调试面板",nullptr,&g_app.showDebug);
+        if(ImGui::MenuItem(i18n::Tr("开始调试"),HotkeyText("debug").c_str(),false,!g_app.procBusy.load()&&!debug.active)) { g_app.showDebug=true; g_app.StartCompileRun(BuildAction::Debug); }
+        if(ImGui::MenuItem(i18n::Tr("切换当前行断点"),i18n::Tr("Ctrl+行号"),false,ed!=nullptr)) ed->ToggleBreakpoint((int)ed->LineOf(ed->m_cursor)+1);
+        if(ImGui::MenuItem(i18n::Tr("继续"),nullptr,false,debug.stopped)) g_app.debugger.Continue();
+        if(ImGui::MenuItem(i18n::Tr("步过"),nullptr,false,debug.stopped)) g_app.debugger.Step();
+        if(ImGui::MenuItem(i18n::Tr("步入"),nullptr,false,debug.stopped)) g_app.debugger.Step(true);
+        if(ImGui::MenuItem(i18n::Tr("停止调试"),nullptr,false,debug.active)) g_app.debugger.Stop();
+        ImGui::MenuItem(i18n::Tr("调试面板"),nullptr,&g_app.showDebug);
         ImGui::EndMenu();
     }
-    if (ImGui::BeginMenu("视图")) {
-        ImGui::MenuItem("文件", nullptr, &g_app.showFileTree);
-        ImGui::MenuItem("输出", nullptr, &g_app.showConsole);
-        ImGui::MenuItem("问题", nullptr, &g_app.showProblems);
-        ImGui::MenuItem("终端", nullptr, &g_app.showTerminal);
-        ImGui::MenuItem("全局查找", nullptr, &g_app.showSearch);
-        ImGui::MenuItem("插件市场", nullptr, &g_app.showMarket);
-        ImGui::MenuItem("插件管理", nullptr, &g_app.showPlugins);
-        ImGui::MenuItem("设置", nullptr, &g_app.showSettings);
+    if (ImGui::BeginMenu(i18n::Tr("视图"))) {
+        ImGui::MenuItem(i18n::Tr("文件"), nullptr, &g_app.showFileTree);
+        ImGui::MenuItem(i18n::Tr("输出"), nullptr, &g_app.showConsole);
+        ImGui::MenuItem(i18n::Tr("问题"), nullptr, &g_app.showProblems);
+        ImGui::MenuItem(i18n::Tr("终端"), nullptr, &g_app.showTerminal);
+        ImGui::MenuItem(i18n::Tr("全局查找"), nullptr, &g_app.showSearch);
+        ImGui::MenuItem(i18n::Tr("插件市场"), nullptr, &g_app.showMarket);
+        ImGui::MenuItem(i18n::Tr("插件管理"), nullptr, &g_app.showPlugins);
+        ImGui::MenuItem(i18n::Tr("设置"), nullptr, &g_app.showSettings);
         ImGui::Separator();
-        if (ImGui::MenuItem("恢复默认布局")) { g_resetWorkspace = true; g_app.showFileTree = true; g_app.showConsole = true; g_app.showProblems = true; g_app.showTerminal = true; }
+        if (ImGui::MenuItem(i18n::Tr("恢复默认布局"))) { g_resetWorkspace = true; g_app.showFileTree = true; g_app.showConsole = true; g_app.showProblems = true; g_app.showTerminal = true; }
         ImGui::EndMenu();
     }
-    if (ImGui::BeginMenu("插件")) {
-        if (ImGui::MenuItem("安装本地插件…")) {
+    if (ImGui::BeginMenu(i18n::Tr("插件"))) {
+        if (ImGui::MenuItem(i18n::Tr("安装本地插件…"))) {
             wchar_t path[32768]{}; OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);
-            dialog.lpstrFilter=L"ccrIDE 插件包 (*.zip)\0*.zip\0";dialog.lpstrFile=path;dialog.nMaxFile=32768;
+            dialog.lpstrFilter=i18n::Wide(L"ccrIDE 插件包 (*.zip)\0*.zip\0",L"ccrIDE Plugin Package (*.zip)\0*.zip\0");dialog.lpstrFile=path;dialog.nMaxFile=32768;
             dialog.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
-            if(GetOpenFileNameW(&dialog)) { std::string error; if(!g_app.plugins.InstallLocalArchive(path,error)) MessageBoxW(nullptr,utils::U8ToW(error).c_str(),L"插件安装失败",MB_ICONERROR); }
+            if(GetOpenFileNameW(&dialog)) { std::string error; if(!g_app.plugins.InstallLocalArchive(path,error)) MessageBoxW(nullptr,utils::U8ToW(error).c_str(),i18n::Wide(L"插件安装失败",L"Plugin installation failed"),MB_ICONERROR); }
         }
-        if (ImGui::MenuItem("插件市场")) g_app.showMarket = true;
-        if (ImGui::MenuItem("插件管理", nullptr, &g_app.showPlugins)) g_app.showPlugins = true;
-        if (ImGui::MenuItem("重载插件")) g_app.plugins.ReloadAll();
+        if (ImGui::MenuItem(i18n::Tr("插件市场"))) g_app.showMarket = true;
+        if (ImGui::MenuItem(i18n::Tr("插件管理"), nullptr, &g_app.showPlugins)) g_app.showPlugins = true;
+        if (ImGui::MenuItem(i18n::Tr("重载插件"))) g_app.plugins.ReloadAll();
         ImGui::Separator();
         g_app.plugins.DrawCommands();
-        ImGui::TextDisabled("已加载 %d 个", g_app.plugins.Count());
+        ImGui::TextDisabled(i18n::Tr("已加载 %d 个"), g_app.plugins.Count());
         ImGui::EndMenu();
     }
-    if (ImGui::BeginMenu("帮助")) {
-        if (ImGui::MenuItem("关于 ccrIDE")) g_app.showAbout = true;
-        if (ImGui::MenuItem("打开数据目录")) ShellExecuteW(nullptr, L"open", g_app.dataDir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    if (ImGui::BeginMenu(i18n::Tr("帮助"))) {
+        auto communityLink=[](const char* label,const std::string& url){if(ImGui::MenuItem(label,nullptr,false,!url.empty()))ShellExecuteW(nullptr,L"open",utils::U8ToW(url).c_str(),nullptr,nullptr,SW_SHOWNORMAL);};
+        communityLink(i18n::Tr("项目主页"),community::config.repository);
+        communityLink(i18n::Tr("下载与发布"),community::config.releases);
+        communityLink(i18n::Tr("问题反馈"),community::config.issues);
+        communityLink(i18n::Tr("接口与使用文档"),community::config.documentation);
+        ImGui::Separator();
+        if (ImGui::MenuItem(i18n::Tr("关于 ccrIDE"))) g_app.showAbout = true;
+        if (ImGui::MenuItem(i18n::Tr("打开数据目录"))) ShellExecuteW(nullptr, L"open", g_app.dataDir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         ImGui::EndMenu();
     }
 
@@ -481,18 +489,18 @@ static void DrawWorkspaceToolbar() {
             ImGui::AlignTextToFramePadding();
             ImGui::TextColored(g_app.settings.theme=="light" ? ImVec4(0.16f,0.39f,0.72f,1) : ImVec4(0.48f,0.70f,1,1), "ccrIDE"); ImGui::SameLine(0,20);
         }
-        if (toolbar::Button("##new", Icon::NewFile, tip("新建文件", "new").c_str())) g_app.NewFile();
-        if (toolbar::Button("##open", Icon::Open, tip("打开文件", "open").c_str())) g_app.OpenFileDialog();
+        if (toolbar::Button("##new", Icon::NewFile, tip(i18n::Tr("新建文件"), "new").c_str())) g_app.NewFile();
+        if (toolbar::Button("##open", Icon::Open, tip(i18n::Tr("打开文件"), "open").c_str())) g_app.OpenFileDialog();
         ImGui::BeginDisabled(!ed);
-        if (toolbar::Button("##save", Icon::Save, tip("保存", "save").c_str())) g_app.SaveActive(false);
+        if (toolbar::Button("##save", Icon::Save, tip(i18n::Tr("保存"), "save").c_str())) g_app.SaveActive(false);
         ImGui::EndDisabled();
         if (!narrow) {
             toolbar::Separator();
             ImGui::BeginDisabled(!ed || ed->m_undo.empty());
-            if (toolbar::Button("##undo", Icon::Undo, "撤销  Ctrl+Z")) ed->Undo();
+            if (toolbar::Button("##undo", Icon::Undo, i18n::Tr("撤销  Ctrl+Z"))) ed->Undo();
             ImGui::EndDisabled();
             ImGui::BeginDisabled(!ed || ed->m_redo.empty());
-            if (toolbar::Button("##redo", Icon::Redo, "重做  Ctrl+Y")) ed->Redo();
+            if (toolbar::Button("##redo", Icon::Redo, i18n::Tr("重做  Ctrl+Y"))) ed->Redo();
             ImGui::EndDisabled();
         }
         toolbar::Separator();
@@ -500,15 +508,15 @@ static void DrawWorkspaceToolbar() {
         const char* stds[] = { "C++17", "C++20", "C++14", "C++11", "C++23" };
         bool release = !settings.dbgFlag && settings.optLevel == 1 && !settings.useCmdTemplate;
         bool debug = settings.dbgFlag && settings.optLevel == 2 && !settings.useCmdTemplate;
-        std::string profile = release ? "Release" : debug ? "Debug" : "自定义";
+        std::string profile = release ? "Release" : debug ? "Debug" : i18n::Tr("自定义");
         if (!settings.extraFlags.empty()) profile += " *";
-        std::string label = settings.gppPath.empty() ? "选择编译器…" : "GCC  /  " +
+        std::string label = settings.gppPath.empty() ? i18n::Tr("选择编译器…") : "GCC  /  " +
             std::string(stds[std::max(0, std::min(4, settings.stdVersion))]) + "  /  " + profile;
         float comboWidth = narrow ? 132.0f : 238.0f;
         ImGui::SetNextItemWidth(comboWidth);
         ImGui::BeginDisabled(busy);
         if (ImGui::BeginCombo("##build_profile", label.c_str())) {
-            ImGui::TextDisabled("编译配置");
+            ImGui::TextDisabled(i18n::Tr("编译配置"));
             ImGui::BeginDisabled(settings.gppPath.empty() || settings.useCmdTemplate);
             if (ImGui::Selectable("Release  /  -O2", release)) {
                 settings.dbgFlag = false; settings.optLevel = 1; g_app.SaveSettings();
@@ -518,12 +526,12 @@ static void DrawWorkspaceToolbar() {
             }
             ImGui::EndDisabled();
             ImGui::Separator();
-            if (ImGui::Selectable("编译器与更多选项…")) g_app.showSettings = true;
+            if (ImGui::Selectable(i18n::Tr("编译器与更多选项…"))) g_app.showSettings = true;
             ImGui::EndCombo();
         }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-            ImGui::SetTooltip("%s\n%s", settings.gppPath.empty() ? "尚未配置编译器" : settings.gppPath.c_str(),
-                              settings.useCmdTemplate ? "正在使用自定义编译命令" : "选择优化配置；保留附加参数，* 表示有附加参数。Debug 配置包含调试信息");
+            ImGui::SetTooltip("%s\n%s", settings.gppPath.empty() ? i18n::Tr("尚未配置编译器") : settings.gppPath.c_str(),
+                              settings.useCmdTemplate ? i18n::Tr("正在使用自定义编译命令") : i18n::Tr("选择优化配置；保留附加参数，* 表示有附加参数。Debug 配置包含调试信息"));
         ImGui::EndDisabled();
 
         ImGui::SameLine(0,12);
@@ -543,13 +551,13 @@ static void DrawWorkspaceToolbar() {
             ImGui::SameLine(0,4); return clicked;
         };
         ImGui::BeginDisabled(busy || !ed);
-        if(action("##compile",Icon::Build,"编译","compile")) { g_app.showConsole=true; g_app.StartCompileRun(BuildAction::Compile); ImGui::SetWindowFocus("输出"); }
-        if(action("##run",Icon::Run,"编译运行","run",true)) { g_app.showConsole=true; g_app.StartCompileRun(); }
-        if(action("##runOnly",Icon::Run,"运行","runOnly")) g_app.StartCompileRun(BuildAction::Run);
-        if(toolbar::Button("##debug",Icon::Debug,tip("开始调试","debug").c_str())) { g_app.showDebug=true; g_app.StartCompileRun(BuildAction::Debug); }
+        if(action("##compile",Icon::Build,i18n::Tr("编译"),"compile")) { g_app.showConsole=true; g_app.StartCompileRun(BuildAction::Compile); ImGui::SetWindowFocus(i18n::Window("输出")); }
+        if(action("##run",Icon::Run,i18n::Tr("编译运行"),"run",true)) { g_app.showConsole=true; g_app.StartCompileRun(); }
+        if(action("##runOnly",Icon::Run,i18n::Tr("运行"),"runOnly")) g_app.StartCompileRun(BuildAction::Run);
+        if(toolbar::Button("##debug",Icon::Debug,tip(i18n::Tr("开始调试"),"debug").c_str())) { g_app.showDebug=true; g_app.StartCompileRun(BuildAction::Debug); }
         ImGui::EndDisabled();
         ImGui::BeginDisabled(!busy);
-        if(toolbar::Button("##stop",Icon::Stop,"停止当前任务")) { g_app.killRequested.store(true); g_app.debugger.Stop(); }
+        if(toolbar::Button("##stop",Icon::Stop,i18n::Tr("停止当前任务"))) { g_app.killRequested.store(true); g_app.debugger.Stop(); }
         ImGui::EndDisabled();
     }
     ImGui::End(); ImGui::PopStyleVar(3);
@@ -564,7 +572,7 @@ static void DrawActivityBar() {
     if(ImGui::BeginViewportSideBar("##activity_bar",vp,ImGuiDir_Left,38,
        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar)) {
         auto item=[&](const char* id,toolbar::Icon icon,const char* tip,bool* visible,const char* window) {
-            auto* target=ImGui::FindWindowByName(window);
+            auto* target=ImGui::FindWindowByName(i18n::Window(window));
             bool selected=*visible && (!target || !target->DockNode || target->DockNode->VisibleWindow==target);
             ImGui::PushStyleColor(ImGuiCol_Button,selected ? ImGui::GetStyleColorVec4(ImGuiCol_Header) : ImVec4(0,0,0,0));
             bool clicked=ImGui::Button(id,ImVec2(30,32)); ImGui::PopStyleColor();
@@ -573,18 +581,18 @@ static void DrawActivityBar() {
             if(selected) ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(pos.x-4,pos.y+6),ImVec2(pos.x-2,pos.y+26),ImGui::GetColorU32(ImGuiCol_CheckMark),1);
             if(ImGui::IsItemHovered()) ImGui::SetTooltip("%s",tip);
             if(clicked) {
-                if(*visible && target && target->DockNode && target->DockNode->VisibleWindow!=target) ImGui::SetWindowFocus(window);
-                else { *visible=!*visible; if(*visible) ImGui::SetWindowFocus(window); }
+                if(*visible && target && target->DockNode && target->DockNode->VisibleWindow!=target) ImGui::SetWindowFocus(i18n::Window(window));
+                else { *visible=!*visible; if(*visible) ImGui::SetWindowFocus(i18n::Window(window)); }
             }
         };
-        item("##files",toolbar::Icon::Files,"文件",&g_app.showFileTree,"文件");
-        item("##search",toolbar::Icon::Search,"全局查找",&g_app.showSearch,"全局查找");
-        item("##debugPanel",toolbar::Icon::Debug,"调试",&g_app.showDebug,"调试");
-        item("##problems",toolbar::Icon::Build,"问题",&g_app.showProblems,"问题");
-        item("##terminal",toolbar::Icon::Output,"终端",&g_app.showTerminal,"终端");
-        item("##output",toolbar::Icon::Backup,"构建输出",&g_app.showConsole,"输出");
+        item("##files",toolbar::Icon::Files,i18n::Tr("文件"),&g_app.showFileTree,i18n::Tr("文件"));
+        item("##search",toolbar::Icon::Search,i18n::Tr("全局查找"),&g_app.showSearch,i18n::Tr("全局查找"));
+        item("##debugPanel",toolbar::Icon::Debug,i18n::Tr("调试"),&g_app.showDebug,i18n::Tr("调试"));
+        item("##problems",toolbar::Icon::Build,i18n::Tr("问题"),&g_app.showProblems,i18n::Tr("问题"));
+        item("##terminal",toolbar::Icon::Output,i18n::Tr("终端"),&g_app.showTerminal,i18n::Tr("终端"));
+        item("##output",toolbar::Icon::Backup,i18n::Tr("构建输出"),&g_app.showConsole,i18n::Tr("输出"));
         ImGui::SetCursorPosY(std::max(ImGui::GetCursorPosY(),ImGui::GetWindowHeight()-86));
-        item("##settings",toolbar::Icon::Settings,"设置",&g_app.showSettings,"设置");
+        item("##settings",toolbar::Icon::Settings,i18n::Tr("设置"),&g_app.showSettings,i18n::Tr("设置"));
     }
     ImGui::End(); ImGui::PopStyleColor(); ImGui::PopStyleVar(2);
 }
@@ -595,7 +603,7 @@ static void DrawWorkspaceDock() {
     bool rebuild = !ImGui::DockBuilderGetNode(id) || g_resetWorkspace;
     ImGui::DockSpaceOverViewport(id, vp, ImGuiDockNodeFlags_PassthruCentralNode);
     if (!rebuild) {
-        auto* file=ImGui::FindWindowByName("文件"); auto* output=ImGui::FindWindowByName("输出");
+        auto* file=ImGui::FindWindowByName(i18n::Window("文件")); auto* output=ImGui::FindWindowByName(i18n::Window("输出"));
         auto* root=ImGui::DockBuilderGetNode(id);
         // Plugins choose a default tool-window dock without exposing host objects.
         if(file && output && root) g_app.plugins.SetDockTargets(file->DockId,output->DockId,root->ID);
@@ -610,15 +618,15 @@ static void DrawWorkspaceDock() {
     ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, std::min(0.30f, 230.0f / vp->WorkSize.x), &left, &center);
     ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, std::min(0.30f, 210.0f / vp->WorkSize.y), &bottom, &center);
     ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.29f, &right, &center);
-    ImGui::DockBuilderDockWindow("文件", left);
-    ImGui::DockBuilderDockWindow("全局查找", left);
-    ImGui::DockBuilderDockWindow("编辑器", center);
-    ImGui::DockBuilderDockWindow("问题", bottom);
-    ImGui::DockBuilderDockWindow("输出", bottom);
-    ImGui::DockBuilderDockWindow("终端", bottom);
-    ImGui::DockBuilderDockWindow("调试", bottom);
-    ImGui::DockBuilderDockWindow("时钟", bottom);
-    ImGui::DockBuilderDockWindow("示例插件 Hello", bottom);
+    ImGui::DockBuilderDockWindow(i18n::Window("文件"), left);
+    ImGui::DockBuilderDockWindow(i18n::Window("全局查找"), left);
+    ImGui::DockBuilderDockWindow(i18n::Window("编辑器"), center);
+    ImGui::DockBuilderDockWindow(i18n::Window("问题"), bottom);
+    ImGui::DockBuilderDockWindow(i18n::Window("输出"), bottom);
+    ImGui::DockBuilderDockWindow(i18n::Window("终端"), bottom);
+    ImGui::DockBuilderDockWindow(i18n::Window("调试"), bottom);
+    ImGui::DockBuilderDockWindow(i18n::Window("时钟"), bottom);
+    ImGui::DockBuilderDockWindow(i18n::Window("示例插件 Hello"), bottom);
     g_app.plugins.SetDockTargets(left,bottom,right);
     if (auto* node = ImGui::DockBuilderGetNode(center)) node->LocalFlags |= ImGuiDockNodeFlags_AutoHideTabBar;
     // Marketplace/settings are occasional tasks; do not permanently split editor space for them.
@@ -628,7 +636,7 @@ static void DrawWorkspaceDock() {
 // ---------------- Editor tabs ----------------
 static void DrawEditorWindow() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    if (!ImGui::Begin("编辑器", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+    if (!ImGui::Begin(i18n::Window("编辑器"), nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         ImGui::End(); ImGui::PopStyleVar(); return;
     }
     static uint64_t lastActive = 0;
@@ -651,13 +659,13 @@ static void DrawEditorWindow() {
             if (ImGui::IsItemHovered() && ed->HasPath()) ImGui::SetTooltip("%s", utils::WToU8(ed->m_path).c_str());
             if (!open) { action = 1; target = i; }
             if (ImGui::BeginPopupContextItem()) {
-                if (ImGui::MenuItem("关闭")) { action = 1; target = i; }
-                if (ImGui::MenuItem("关闭其他")) { action = 2; target = i; }
-                if (ImGui::MenuItem("全部关闭")) { action = 3; target = i; }
+                if (ImGui::MenuItem(i18n::Tr("关闭"))) { action = 1; target = i; }
+                if (ImGui::MenuItem(i18n::Tr("关闭其他"))) { action = 2; target = i; }
+                if (ImGui::MenuItem(i18n::Tr("全部关闭"))) { action = 3; target = i; }
                 ImGui::Separator();
                 if (ed->HasPath()) {
-                    if (ImGui::MenuItem("复制文件路径")) ImGui::SetClipboardText(utils::WToU8(ed->m_path).c_str());
-                    if (ImGui::MenuItem("在资源管理器中显示")) {
+                    if (ImGui::MenuItem(i18n::Tr("复制文件路径"))) ImGui::SetClipboardText(utils::WToU8(ed->m_path).c_str());
+                    if (ImGui::MenuItem(i18n::Tr("在资源管理器中显示"))) {
                         std::wstring args = L"/select,\"" + ed->m_path + L"\"";
                         ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
                     }
@@ -684,7 +692,7 @@ static void DrawEditorWindow() {
     CodeEditor* ed = g_app.ActiveEditor();
     if (ed) {
         ImGui::Indent(14);
-        ImGui::TextDisabled("%s", ed->HasPath() ? utils::WToU8(utils::FileBase(utils::DirName(ed->m_path))).c_str() : "工作区");
+        ImGui::TextDisabled("%s", ed->HasPath() ? utils::WToU8(utils::FileBase(utils::DirName(ed->m_path))).c_str() : i18n::Tr("工作区"));
         ImGui::SameLine(); ImGui::TextDisabled(" / "); ImGui::SameLine();
         ImGui::TextUnformatted(ed->m_name.c_str());
         ImGui::Unindent(14);
@@ -695,12 +703,12 @@ static void DrawEditorWindow() {
         ImGui::SetCursorPos(ImVec2(std::max(24.0f, available.x * 0.5f - 145), std::max(50.0f, available.y * 0.32f)));
         ImGui::BeginGroup();
         ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_CheckMark), "ccrIDE");
-        ImGui::Spacing(); ImGui::TextUnformatted("开始编写你的 C++ 程序");
-        ImGui::Spacing(); ImGui::TextDisabled("新建文件，或打开已有代码继续编写。");
+        ImGui::Spacing(); ImGui::TextUnformatted(i18n::Tr("开始编写你的 C++ 程序"));
+        ImGui::Spacing(); ImGui::TextDisabled(i18n::Tr("新建文件，或打开已有代码继续编写。"));
         ImGui::Spacing(); ImGui::Spacing();
-        if (ImGui::Button("新建文件", ImVec2(124, 36))) g_app.NewFile();
+        if (ImGui::Button(i18n::Tr("新建文件"), ImVec2(124, 36))) g_app.NewFile();
         ImGui::SameLine();
-        if (ImGui::Button("打开文件", ImVec2(124, 36))) g_app.OpenFileDialog();
+        if (ImGui::Button(i18n::Tr("打开文件"), ImVec2(124, 36))) g_app.OpenFileDialog();
         ImGui::EndGroup();
     }
     ImGui::End(); ImGui::PopStyleVar();
@@ -715,11 +723,11 @@ static void DrawStatusBar() {
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings)) {
         CodeEditor* ed = g_app.ActiveEditor();
         const bool busy = g_app.procBusy.load();
-        std::string status = busy ? g_app.GetProcStatus() : g_app.diagStatus.empty() ? "就绪" : g_app.diagStatus;
+        std::string status = busy ? g_app.GetProcStatus() : g_app.diagStatus.empty() ? i18n::Tr("就绪") : g_app.diagStatus;
         int errors = 0, warnings = 0;
         for (auto& d : g_app.activeDiags) { if (d.isErr) ++errors; else ++warnings; }
-        if (errors) ImGui::TextColored(ImVec4(0.95f,0.44f,0.43f,1), "%d 个错误", errors);
-        else if (warnings) ImGui::TextColored(ImVec4(0.90f,0.69f,0.32f,1), "%d 个警告", warnings);
+        if (errors) ImGui::TextColored(ImVec4(0.95f,0.44f,0.43f,1), i18n::Tr("%d 个错误"), errors);
+        else if (warnings) ImGui::TextColored(ImVec4(0.90f,0.69f,0.32f,1), i18n::Tr("%d 个警告"), warnings);
         else ImGui::TextDisabled("%s", status.c_str());
         if (ed) {
             float right = 230;
@@ -729,7 +737,7 @@ static void DrawStatusBar() {
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", utils::WToU8(ed->m_path).c_str());
             }
             ImGui::SameLine(std::max(ImGui::GetCursorPosX() + 12, vp->Size.x - right));
-            ImGui::TextDisabled("行 %d : 列 %d    |    %s    C++", (int)ed->LineOf(ed->m_cursor) + 1,
+            ImGui::TextDisabled(i18n::Tr("行 %d : 列 %d    |    %s    C++"), (int)ed->LineOf(ed->m_cursor) + 1,
                                (int)ed->VisualCol(ed->m_cursor) + 1, ed->m_enc == 1 ? "GBK" : "UTF-8");
         }
     }
@@ -745,25 +753,25 @@ static bool SettingsCheckbox(const char* label,bool* value){
 }
 static void DrawEditorAppearanceSettings() {
     auto& settings = g_app.settings;
-    ImGui::SeparatorText("编辑器配色与辅助线");
-    SettingsCheckbox("彩虹括号", &settings.rainbowBrackets);
-    SettingsCheckbox("缩进提示线", &settings.showIndentGuides);
-    SettingsCheckbox("彩虹缩进线", &settings.rainbowIndentLines);
-    SettingsCheckbox("彩虹填充缩进", &settings.rainbowIndentFill);
-    SettingsCheckbox("显示空格与 Tab 标记", &settings.showWhitespace);
+    ImGui::SeparatorText(i18n::Tr("编辑器配色与辅助线"));
+    SettingsCheckbox(i18n::Tr("彩虹括号"), &settings.rainbowBrackets);
+    SettingsCheckbox(i18n::Tr("缩进提示线"), &settings.showIndentGuides);
+    SettingsCheckbox(i18n::Tr("彩虹缩进线"), &settings.rainbowIndentLines);
+    SettingsCheckbox(i18n::Tr("彩虹填充缩进"), &settings.rainbowIndentFill);
+    SettingsCheckbox(i18n::Tr("显示空格与 Tab 标记"), &settings.showWhitespace);
     static int selected = (int)EditorColor::Selection;
     const auto& spec = EditorColorSpecs[selected];
-    std::string name = std::string(spec.group) + " / " + spec.label;
-    ImGui::TextUnformatted("颜色项目");
+    std::string name = std::string(i18n::Tr(spec.group)) + " / " + i18n::Tr(spec.label);
+    ImGui::TextUnformatted(i18n::Tr("颜色项目"));
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("##editor_color_role", name.c_str(), ImGuiComboFlags_HeightLarge)) {
-        for (const char* group : {"编辑器", "语法", "语法检查"}) {
+        for (const char* group : {i18n::Tr("编辑器"), i18n::Tr("语法"), i18n::Tr("语法检查")}) {
             ImGui::SeparatorText(group);
             for (int i=0; i<(int)EditorColor::Count; ++i) {
                 const auto& item=EditorColorSpecs[i];
-                if (strcmp(group,item.group)) continue;
+                if (strcmp(group,i18n::Tr(item.group))) continue;
                 ImGui::PushID(i);
-                if (ImGui::Selectable(item.label, selected==i)) selected=i;
+                if (ImGui::Selectable(i18n::Tr(item.label), selected==i)) selected=i;
                 ImGui::PopID();
             }
         }
@@ -776,22 +784,22 @@ static void DrawEditorAppearanceSettings() {
         settings.editorColors[key] = ImGui::ColorConvertFloat4ToU32(color);
         g_app.ApplyTheme();
     }
-    if (ImGui::Button("恢复此项默认色")) { settings.editorColors.erase(key); g_app.ApplyTheme(); }
+    if (ImGui::Button(i18n::Tr("恢复此项默认色"))) { settings.editorColors.erase(key); g_app.ApplyTheme(); }
     if (ImGui::GetWindowWidth() > 440) ImGui::SameLine();
-    if (ImGui::Button("恢复当前主题全部颜色")) {
+    if (ImGui::Button(i18n::Tr("恢复当前主题全部颜色"))) {
         std::string prefix = settings.theme + "/";
         for (auto it=settings.editorColors.begin(); it!=settings.editorColors.end(); )
             if (it->first.rfind(prefix, 0) == 0) it = settings.editorColors.erase(it); else ++it;
         g_app.ApplyTheme();
     }
-    ImGui::TextWrapped("颜色实时生效；深色和浅色分别保存。红杠表示相对上次保存新增或修改的行，绿杠表示原有或已保存行。Ctrl+点击行号设置断点。");
+    ImGui::TextWrapped(i18n::Tr("颜色实时生效；深色和浅色分别保存。红杠表示相对上次保存新增或修改的行，绿杠表示原有或已保存行。Ctrl+点击行号设置断点。"));
     ImGui::PushStyleColor(ImGuiCol_ChildBg, g_app.EditorColorValue(EditorColor::Background));
     ImGui::BeginChild("##palette_preview", ImVec2(0,64), ImGuiChildFlags_Borders);
-    ImGui::TextColored(color, "Aa  示例文字  012345  { [ ( ) ] }");
+    ImGui::TextColored(color, i18n::Tr("Aa  示例文字  012345  { [ ( ) ] }"));
     ImGui::PushStyleColor(ImGuiCol_Text, g_app.EditorColorValue(EditorColor::SelectedText));
     ImVec2 start=ImGui::GetCursorScreenPos();
     ImGui::GetWindowDrawList()->AddRectFilled(start, ImVec2(start.x+180,start.y+20), g_app.EditorColorValue(EditorColor::Selection));
-    ImGui::TextUnformatted("选中文字预览");
+    ImGui::TextUnformatted(i18n::Tr("选中文字预览"));
     ImGui::PopStyleColor(); ImGui::EndChild(); ImGui::PopStyleColor();
 }
 
@@ -806,7 +814,7 @@ static void DrawSettingsWindow() {
     ImGui::SetNextWindowSize(ImVec2(std::min(850.0f, std::max(340.0f, screen.x - 32)),
                                   std::min(720.0f, std::max(280.0f, screen.y - 32))), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSizeConstraints(ImVec2(340, 280), ImVec2(FLT_MAX, FLT_MAX));
-    if (!ImGui::Begin("设置", &g_app.showSettings, ImGuiWindowFlags_NoScrollbar)) {
+    if (!ImGui::Begin(i18n::Window("设置"), &g_app.showSettings, ImGuiWindowFlags_NoScrollbar)) {
         g_hkRecording = false;   // 窗口关闭时取消录制, 避免全局快捷键一直失效
         g_hkRecAct.clear();
         ImGui::End();
@@ -823,11 +831,11 @@ static void DrawSettingsWindow() {
         ImGui::PopStyleColor();
     };
     int& section=g_settingsSection;
-    const char* sections[]={"编译器与构建","代码辅助","运行与调试","外观与颜色","插件","快捷键","编辑习惯","备份与偏好"};
-    const char* keywords[]={"编译器 构建 g++ 标准 优化 参数","代码辅助 补全 提示 检查 延迟 自动 语法高亮 字符 行数 宽度 停顿","运行 调试 资源 限制 目录 参数 环境 GDB",
-        "外观 颜色 字体 字号 行距 行号 高亮 光标 圆角 滚动条 工具栏 状态栏 活动栏 疏密 缩进 彩虹 括号 空格 Tab 字符串 注释 关键字 选择","插件 市场","快捷键 按键",
-        "编辑 缩进 Tab 空格 括号 自动配对 滚动 滚轮","备份 恢复 间隔 偏好 导入 导出 默认 预设"};
-    field("搜索设置");
+    const char* sections[]={i18n::Tr("编译器与构建"),i18n::Tr("代码辅助"),i18n::Tr("运行与调试"),i18n::Tr("外观与颜色"),i18n::Tr("插件"),i18n::Tr("快捷键"),i18n::Tr("编辑习惯"),i18n::Tr("备份与偏好")};
+    const char* keywords[]={i18n::Tr("编译器 构建 g++ 标准 优化 参数"),i18n::Tr("代码辅助 补全 提示 检查 延迟 自动 语法高亮 字符 行数 宽度 停顿"),i18n::Tr("运行 调试 资源 限制 目录 参数 环境 GDB"),
+        i18n::Tr("语言 English 中文 外观 颜色 字体 字号 行距 行号 高亮 光标 圆角 滚动条 工具栏 状态栏 活动栏 疏密 缩进 彩虹 括号 空格 Tab 字符串 注释 关键字 选择"),i18n::Tr("插件 市场"),i18n::Tr("快捷键 按键"),
+        i18n::Tr("编辑 缩进 Tab 空格 括号 自动配对 滚动 滚轮"),i18n::Tr("备份 恢复 间隔 偏好 导入 导出 默认 预设")};
+    field(i18n::Tr("搜索设置"));
     if(ui::InputTextStd("##settings_search",g_settingsSearch)){g_hkRecAct.clear();g_hkRecording=false;}
     auto matches=[&](int index){
         if(g_settingsSearch.empty())return true;
@@ -838,8 +846,9 @@ static void DrawSettingsWindow() {
 
     float bodyHeight=ImGui::GetContentRegionAvail().y-ImGui::GetFrameHeightWithSpacing()-12;
     if(ImGui::GetWindowWidth()>=540) {
-        ImGui::BeginChild("##settings_categories",ImVec2(std::max(142.0f,ImGui::CalcTextSize("编译器与构建").x+24),bodyHeight));
-        ImGui::TextDisabled("偏好设置"); ImGui::Spacing();
+        float categoryWidth=142.0f;for(const char* name:sections)categoryWidth=std::max(categoryWidth,ImGui::CalcTextSize(name).x+24+ImGui::GetStyle().WindowPadding.x*2);
+        ImGui::BeginChild("##settings_categories",ImVec2(categoryWidth,bodyHeight));
+        ImGui::TextDisabled(i18n::Tr("偏好设置")); ImGui::Spacing();
         for(int i=0;i<8;++i) if(matches(i)&&ImGui::Selectable(sections[i],section==i,0,ImVec2(0,30))) {
             section=i; g_hkRecAct.clear(); g_hkRecording=false;
         }
@@ -854,164 +863,174 @@ static void DrawSettingsWindow() {
     }
     ImGui::BeginChild("##settings_body", ImVec2(0,bodyHeight));
     ImGui::PushID(section);
-    if(!any)help("没有匹配的设置，请换一个关键词。");
+    if(!any)help(i18n::Tr("没有匹配的设置，请换一个关键词。"));
     if(any){
     if(section==0) {
-    ImGui::SeparatorText("编译器");
-    field("g++ 路径");
+    ImGui::SeparatorText(i18n::Tr("编译器"));
+    field(i18n::Tr("g++ 路径"));
     ui::InputTextStd("##g++ 路径", g_app.settings.gppPath);
-    field("附加编译参数");
+    field(i18n::Tr("附加编译参数"));
     ui::InputTextStd("##附加编译参数", g_app.settings.extraFlags);
-    help("空格分隔, 如: -g -Wall -std=c++20 (默认 -std=c++17 -O2)");
-    if (ImGui::Button("递归查找编译器")) g_app.StartCompilerSearch();
+    help(i18n::Tr("空格分隔, 如: -g -Wall -std=c++20 (默认 -std=c++17 -O2)"));
+    if (ImGui::Button(i18n::Tr("递归查找编译器"))) g_app.StartCompilerSearch();
     if(!g_app.compilerCandidates.empty()) {
         ImGui::SameLine();
-        if(ImGui::Button("选择已找到的编译器"))g_app.compilerPickerOpen=true;
+        if(ImGui::Button(i18n::Tr("选择已找到的编译器")))g_app.compilerPickerOpen=true;
     }
-    if(g_app.compilerScanBusy.load())ImGui::TextWrapped("正在后台扫描本机磁盘，可在编译器选择窗口取消。");
+    if(g_app.compilerScanBusy.load())ImGui::TextWrapped(i18n::Tr("正在后台扫描本机磁盘，可在编译器选择窗口取消。"));
     else if(!g_app.compilerScanMessage.empty())ImGui::TextWrapped("%s",g_app.compilerScanMessage.c_str());
 
 
     }
     if(section==1) {
-    ImGui::SeparatorText("代码辅助");
-    if (SettingsCheckbox("代码补全与参数提示", &g_app.settings.codeCompletion)) {
+    ImGui::SeparatorText(i18n::Tr("代码辅助"));
+    if (SettingsCheckbox(i18n::Tr("代码补全与参数提示"), &g_app.settings.codeCompletion)) {
         if (!g_app.settings.codeCompletion) for (auto& ed : g_app.editors) {
             ed->CloseCompletion(); ed->CloseCalltip();
         }
     }
-    SettingsCheckbox("输入时自动弹出补全",&g_app.settings.autoCompletion);
-    field("普通单词补全的最少字符数");SettingsSlider("##completion_min",&g_app.settings.completionMinChars,1,4);
-    field("补全列表最多显示行数");SettingsSlider("##completion_rows",&g_app.settings.completionRows,4,16);
-    field("补全弹窗最大宽度（像素）");SettingsSlider("##completion_width",&g_app.settings.completionWidth,360,1000);
-    help("关闭自动弹出后仍可用 Ctrl+Space 手动补全；成员、命名空间和 include 补全不受最少字符数限制。");
-    SettingsCheckbox("语法高亮", &g_app.settings.syntaxHighlight);
-    if (SettingsCheckbox("自动语法检查", &g_app.settings.autoCheck)) {
+    SettingsCheckbox(i18n::Tr("输入时自动弹出补全"),&g_app.settings.autoCompletion);
+    field(i18n::Tr("普通单词补全的最少字符数"));SettingsSlider("##completion_min",&g_app.settings.completionMinChars,1,4);
+    field(i18n::Tr("补全列表最多显示行数"));SettingsSlider("##completion_rows",&g_app.settings.completionRows,4,16);
+    field(i18n::Tr("补全弹窗最大宽度（像素）"));SettingsSlider("##completion_width",&g_app.settings.completionWidth,360,1000);
+    help(i18n::Tr("关闭自动弹出后仍可用 Ctrl+Space 手动补全；成员、命名空间和 include 补全不受最少字符数限制。"));
+    SettingsCheckbox(i18n::Tr("语法高亮"), &g_app.settings.syntaxHighlight);
+    if (SettingsCheckbox(i18n::Tr("自动语法检查"), &g_app.settings.autoCheck)) {
         if (g_app.settings.autoCheck) g_app.MarkDiag();
     }
-    field("自动检查等待输入停顿（毫秒）");SettingsSlider("##check_delay",&g_app.settings.autoCheckDelayMs,200,3000);
-    help("三个开关相互独立。关闭补全不影响高亮或检查；关闭高亮仍可导航、折叠和匹配括号。自动检查在输入停顿后运行，关闭后已启动的检查可完成，但不再应用其结果；编译错误仍会显示。");
+    field(i18n::Tr("自动检查等待输入停顿（毫秒）"));SettingsSlider("##check_delay",&g_app.settings.autoCheckDelayMs,200,3000);
+    help(i18n::Tr("三个开关相互独立。关闭补全不影响高亮或检查；关闭高亮仍可导航、折叠和匹配括号。自动检查在输入停顿后运行，关闭后已启动的检查可完成，但不再应用其结果；编译错误仍会显示。"));
 
     }
     if(section==0) {
-    ImGui::SeparatorText("编译与运行 (F10 / F11 / F12)");
+    ImGui::SeparatorText(i18n::Tr("编译与运行 (F10 / F11 / F12)"));
     int modeIdx = g_app.settings.useCmdTemplate ? 1 : 0;
-    field("编译方式");
-    if (ImGui::Combo("##编译方式", &modeIdx, "标准选项 (勾选下方开关)\0自定义命令行模板\0")) {
+    field(i18n::Tr("编译方式"));
+    if (ImGui::Combo("##编译方式", &modeIdx, i18n::Tr("标准选项 (勾选下方开关)\0自定义命令行模板\0"))) {
         g_app.settings.useCmdTemplate = (modeIdx == 1);
     }
     if (!g_app.settings.useCmdTemplate) {
         const char* stds[] = { "C++17", "C++20", "C++14", "C++11", "C++23" };
         int sv = g_app.settings.stdVersion;
         if (sv < 0 || sv > 4) sv = 0;
-        field("C++ 标准");
+        field(i18n::Tr("C++ 标准"));
     if (ImGui::Combo("##C++ 标准", &sv, stds, 5)) g_app.settings.stdVersion = sv;
-        const char* opts[] = { "无", "-O2", "-O0", "-O1", "-O3", "-Os" };
+        const char* opts[] = { i18n::Tr("无"), "-O2", "-O0", "-O1", "-O3", "-Os" };
         int ol = g_app.settings.optLevel;
         if (ol < 0 || ol > 5) ol = 1;
-        field("优化级别");
+        field(i18n::Tr("优化级别"));
     if (ImGui::Combo("##优化级别", &ol, opts, 6)) g_app.settings.optLevel = ol;
-        SettingsCheckbox("警告 -Wall -Wextra", &g_app.settings.warnAll);
+        SettingsCheckbox(i18n::Tr("警告 -Wall -Wextra"), &g_app.settings.warnAll);
         if (ImGui::GetWindowWidth() > 420) ImGui::SameLine();
-        SettingsCheckbox("调试信息 -g", &g_app.settings.dbgFlag);
-        help("实际命令: <g++ 路径> <源文件> <上面的选项> <附加编译参数> -o <exe>");
+        SettingsCheckbox(i18n::Tr("调试信息 -g"), &g_app.settings.dbgFlag);
+        help(i18n::Tr("实际命令: <g++ 路径> <源文件> <上面的选项> <附加编译参数> -o <exe>"));
     } else {
-        ImGui::TextWrapped("占位符: {gpp} 编译器  {file} 源文件  {exe} 输出程序  {dir} 所在目录  "
-                           "{std}/{opt}/{warn}/{dbg} 上方开关  {extra} 附加编译参数");
-        field("命令行模板");
+        ImGui::TextWrapped(i18n::Tr("占位符: {gpp} 编译器  {file} 源文件  {exe} 输出程序  {dir} 所在目录  {std}/{opt}/{warn}/{dbg} 上方开关  {extra} 附加编译参数"));
+        field(i18n::Tr("命令行模板"));
         ui::InputTextMultilineStd("##命令行模板", g_app.settings.commandTemplate, ImVec2(-FLT_MIN, 96));
-        if (ImGui::Button("填入默认模板")) {
+        if (ImGui::Button(i18n::Tr("填入默认模板"))) {
             g_app.settings.commandTemplate = "{gpp} {std} {opt} {warn} {dbg} {extra} {file} -o {exe}";
         }
         if (ImGui::GetWindowWidth() > 420) ImGui::SameLine();
-        if (ImGui::Button("清空 (留空=用默认)")) g_app.settings.commandTemplate.clear();
-        help("首段必须是可执行文件; 路径含空格请用引号包住, 如 \"{gpp}\" 或 -I\"D:/my lib\"。");
+        if (ImGui::Button(i18n::Tr("清空 (留空=用默认)"))) g_app.settings.commandTemplate.clear();
+        help(i18n::Tr("首段必须是可执行文件; 路径含空格请用引号包住, 如 \"{gpp}\" 或 -I\"D:/my lib\"。"));
     }
 
     }
     if(section==2) {
-    ImGui::SeparatorText("运行与资源限制");
-    field("运行时间上限 (毫秒)");
+    ImGui::SeparatorText(i18n::Tr("运行与资源限制"));
+    field(i18n::Tr("运行时间上限 (毫秒)"));
     ImGui::InputInt("##runTime", &g_app.settings.runTimeLimitMs);
     if (ImGui::IsItemDeactivatedAfterEdit()) g_app.settings.runTimeLimitMs = std::clamp(g_app.settings.runTimeLimitMs, 100, 3600000);
-    field("运行内存上限 (MiB，0 表示不限制)");
+    field(i18n::Tr("运行内存上限 (MiB，0 表示不限制)"));
     ImGui::InputInt("##runMemory", &g_app.settings.runMemoryLimitMB);
     if (ImGui::IsItemDeactivatedAfterEdit()) g_app.settings.runMemoryLimitMB = std::clamp(g_app.settings.runMemoryLimitMB, 0, 16384);
-    field("总输出上限 (MiB，stdout 与 stderr 合计)");
+    field(i18n::Tr("总输出上限 (MiB，stdout 与 stderr 合计)"));
     ImGui::InputInt("##runOutput", &g_app.settings.runOutputLimitMB);
     if (ImGui::IsItemDeactivatedAfterEdit()) g_app.settings.runOutputLimitMB = std::clamp(g_app.settings.runOutputLimitMB, 1, 64);
-    field("编译时间上限 (毫秒)");
+    field(i18n::Tr("编译时间上限 (毫秒)"));
     ImGui::InputInt("##compileTime", &g_app.settings.compileTimeLimitMs);
     if (ImGui::IsItemDeactivatedAfterEdit()) g_app.settings.compileTimeLimitMs = std::clamp(g_app.settings.compileTimeLimitMs, 100, 3600000);
-    field("程序参数");
+    field(i18n::Tr("程序参数"));
     ui::InputTextStd("##runArguments", g_app.settings.runArguments);
-    help("按 Windows 参数规则解析，含空格的参数用双引号包住，空参数写作双引号对。");
-    SettingsCheckbox("每次运行使用独立工作目录",&g_app.settings.isolatedRunDirectory);
-    field("指定运行目录（填写后优先使用；关闭隔离且留空时使用源码目录）");
+    help(i18n::Tr("按 Windows 参数规则解析，含空格的参数用双引号包住，空参数写作双引号对。"));
+    SettingsCheckbox(i18n::Tr("每次运行使用独立工作目录"),&g_app.settings.isolatedRunDirectory);
+    field(i18n::Tr("指定运行目录（填写后优先使用；关闭隔离且留空时使用源码目录）"));
     ui::InputTextStd("##runDirectory", g_app.settings.runDirectory);
-    field("GDB 路径 (留空使用编译器目录中的 gdb.exe)");
+    field(i18n::Tr("GDB 路径 (留空使用编译器目录中的 gdb.exe)"));
     ui::InputTextStd("##gdbPath",g_app.settings.gdbPath);
-    field("调试标准输入文件 (留空发送 EOF)");
+    field(i18n::Tr("调试标准输入文件 (留空发送 EOF)"));
     ui::InputTextStd("##debugInputFile",g_app.settings.debugInputFile);
-    field("环境变量覆盖 (每行 NAME=value)");
+    field(i18n::Tr("环境变量覆盖 (每行 NAME=value)"));
     ui::InputTextMultilineStd("##runEnvironment", g_app.settings.runEnvironment, ImVec2(-FLT_MIN, 78));
-    help("环境覆盖只用于目标程序，值会随设置保存在本机。Windows 进程组限制提交内存并清理后代，每个任务最多 128 个进程；这是资源管理，不能作为安全沙箱。输出面板最多保留 8 MiB，满载时可能省略显示；编译日志总输出上限为 16 MiB。");
+    help(i18n::Tr("环境覆盖只用于目标程序，值会随设置保存在本机。Windows 进程组限制提交内存并清理后代，每个任务最多 128 个进程；这是资源管理，不能作为安全沙箱。输出面板最多保留 8 MiB，满载时可能省略显示；编译日志总输出上限为 16 MiB。"));
 
     }
     if(section==3) {
-    ImGui::SeparatorText("外观");
-    const char* themes[] = { "深色", "浅色" };
+    field(i18n::Tr("语言 / Language"));
+    int languageIndex=g_app.settings.language=="en"?2:g_app.settings.language=="zh-CN"?1:0;
+    const char* languages[]={i18n::Tr("跟随系统"),"简体中文","English"};
+    if(ImGui::Combo("##interface_language",&languageIndex,languages,3)){
+        g_app.settings.language=languageIndex==2?"en":languageIndex==1?"zh-CN":"auto";
+        i18n::SetLanguage(g_app.settings.language);
+        for(auto& editor:g_app.editors){editor->CloseCompletion();editor->CloseCalltip();}
+    }
+    help(i18n::Tr("语言切换立即生效；点击保存设置后保留。"));
+    ImGui::SeparatorText(i18n::Tr("外观"));
+    const char* themes[] = { i18n::Tr("深色"), i18n::Tr("浅色") };
     int themeIdx = (g_app.settings.theme == "light") ? 1 : 0;
-    field("主题");
+    field(i18n::Tr("主题"));
     if (ImGui::Combo("##主题", &themeIdx, themes, 2)) {
         g_app.settings.theme = themeIdx ? "light" : "dark";
         g_app.ApplyTheme();
     }
-    field("编辑器字号");
+    field(i18n::Tr("编辑器字号"));
     if (SettingsSlider("##编辑器字号", &g_app.settings.fontSize, 12, 28)) {
         g_app.settings.fontSize = std::max(12, std::min(28, g_app.settings.fontSize));
         g_app.fontRebuildPending = true;   // 字体下一帧重建, 即时生效
     }
 
-    field("界面字号");
+    field(i18n::Tr("界面字号"));
     if(SettingsSlider("##ui_font",&g_app.settings.uiFontSize,12,22))g_app.fontRebuildPending=true;
     bool appearance=false;
-    field("界面疏密");appearance|=ImGui::Combo("##density",&g_app.settings.uiDensity,"紧凑\0标准\0宽松\0");
-    field("窗口与控件圆角");appearance|=SettingsSlider("##rounding",&g_app.settings.cornerRadius,0,12);
-    field("界面滚动条宽度");appearance|=SettingsSlider("##scrollbar",&g_app.settings.scrollbarSize,8,24);
+    field(i18n::Tr("界面疏密"));appearance|=ImGui::Combo("##density",&g_app.settings.uiDensity,i18n::Tr("紧凑\0标准\0宽松\0"));
+    field(i18n::Tr("窗口与控件圆角"));appearance|=SettingsSlider("##rounding",&g_app.settings.cornerRadius,0,12);
+    field(i18n::Tr("界面滚动条宽度"));appearance|=SettingsSlider("##scrollbar",&g_app.settings.scrollbarSize,8,24);
     if(appearance)g_app.ApplyTheme();
-    field("编辑器行距（百分比）");SettingsSlider("##line_spacing",&g_app.settings.lineHeightPercent,110,180,"%d%%");
-    SettingsCheckbox("显示行号",&g_app.settings.showLineNumbers);
-    SettingsCheckbox("相对行号（当前行显示绝对行号）",&g_app.settings.relativeLineNumbers);
-    SettingsCheckbox("高亮当前行",&g_app.settings.highlightCurrentLine);
-    SettingsCheckbox("高亮相同单词",&g_app.settings.highlightWordOccurrences);
-    SettingsCheckbox("显示红绿修改标记",&g_app.settings.showChangeMarkers);
-    SettingsCheckbox("光标闪烁",&g_app.settings.caretBlink);
-    ImGui::SeparatorText("工作区");
-    SettingsCheckbox("显示顶部工具栏",&g_app.settings.showToolbar);
-    SettingsCheckbox("显示底部状态栏",&g_app.settings.showStatusBar);
-    SettingsCheckbox("显示左侧活动栏",&g_app.settings.showActivityBar);
+    field(i18n::Tr("编辑器行距（百分比）"));SettingsSlider("##line_spacing",&g_app.settings.lineHeightPercent,110,180,"%d%%");
+    SettingsCheckbox(i18n::Tr("显示行号"),&g_app.settings.showLineNumbers);
+    SettingsCheckbox(i18n::Tr("相对行号（当前行显示绝对行号）"),&g_app.settings.relativeLineNumbers);
+    SettingsCheckbox(i18n::Tr("高亮当前行"),&g_app.settings.highlightCurrentLine);
+    SettingsCheckbox(i18n::Tr("高亮相同单词"),&g_app.settings.highlightWordOccurrences);
+    SettingsCheckbox(i18n::Tr("显示红绿修改标记"),&g_app.settings.showChangeMarkers);
+    SettingsCheckbox(i18n::Tr("光标闪烁"),&g_app.settings.caretBlink);
+    ImGui::SeparatorText(i18n::Tr("工作区"));
+    SettingsCheckbox(i18n::Tr("显示顶部工具栏"),&g_app.settings.showToolbar);
+    SettingsCheckbox(i18n::Tr("显示底部状态栏"),&g_app.settings.showStatusBar);
+    SettingsCheckbox(i18n::Tr("显示左侧活动栏"),&g_app.settings.showActivityBar);
     DrawEditorAppearanceSettings();
 
     }
     if(section==4) {
-    ImGui::SeparatorText("插件市场");
-    field("线上市场地址");
+    ImGui::SeparatorText(i18n::Tr("插件市场"));
+    field(i18n::Tr("线上市场地址"));
     ui::InputTextStd("##线上市场地址", g_app.settings.marketUrl);
-    help("留空则仅显示随附插件; 填写后到插件市场点 [刷新线上市场]");
+    help(i18n::Tr("留空则仅显示随附插件; 填写后到插件市场点 [刷新线上市场]"));
+    if(ImGui::Button(i18n::Tr("使用社区配置地址")))g_app.settings.marketUrl=community::config.market;
+    help(i18n::Tr("社区链接可在 data/community.json 中配置，重启后生效。支持 GitHub Raw 清单与 Releases 下载。"));
 
     }
     if(section==5) {
     // ---- 快捷键配置 ----
-    ImGui::SeparatorText("快捷键");
-    help("点击当前组合后按下新的快捷键，Esc 取消。");
+    ImGui::SeparatorText(i18n::Tr("快捷键"));
+    help(i18n::Tr("点击当前组合后按下新的快捷键，Esc 取消。"));
     ImGui::Columns(2, "hkedit", false);
     for (auto& d : g_hkDefs) {
         bool isRec = (g_hkRecAct == d.action);
-        ImGui::TextWrapped("%s",d.label);
+        ImGui::TextWrapped("%s",i18n::Tr(d.label));
         ImGui::NextColumn();
         if (isRec) {
-            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f), "按新组合键...");
+            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.4f, 1.0f), i18n::Tr("按新组合键..."));
         } else {
             std::string combo = HotkeyText(d.action);
             char buf[96];
@@ -1019,7 +1038,7 @@ static void DrawSettingsWindow() {
             ImGui::PushID(d.action);
             if (ImGui::Button(buf, ImVec2(std::min(200.0f, ImGui::GetContentRegionAvail().x), 0))) g_hkRecAct = d.action;
             ImGui::PopID();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("点击后按下新的快捷键组合");
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip(i18n::Tr("点击后按下新的快捷键组合"));
         }
         ImGui::NextColumn();
     }
@@ -1029,7 +1048,7 @@ static void DrawSettingsWindow() {
     if (!g_hkRecAct.empty()) {
         g_hkRecording = true;   // 录制期间不触发全局快捷键 (否则会把正在按的组合执行掉)
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.4f, 1.0f));
-        ImGui::TextWrapped("正在录制…请按下新的快捷键 (Esc 取消)");
+        ImGui::TextWrapped(i18n::Tr("正在录制…请按下新的快捷键 (Esc 取消)"));
         ImGui::PopStyleColor();
         ImGuiIO& io = ImGui::GetIO();
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
@@ -1056,67 +1075,67 @@ static void DrawSettingsWindow() {
 
     }
     if(section==6){
-        ImGui::SeparatorText("缩进与输入");
-        field("Tab 显示宽度与缩进列数");SettingsSlider("##tab_width",&g_app.settings.tabWidth,2,8);
-        SettingsCheckbox("按 Tab 插入空格（关闭后插入制表符）",&g_app.settings.insertSpaces);
-        SettingsCheckbox("回车时自动缩进",&g_app.settings.autoIndent);
-        SettingsCheckbox("自动配对括号与引号",&g_app.settings.autoCloseBrackets);
-        field("滚轮每格滚动行数");SettingsSlider("##scroll_lines",&g_app.settings.scrollLines,1,12);
-        help("缩进宽度同时用于 Tab 显示、鼠标定位、退格和多光标输入。设置只影响后续输入，现有代码保留原样。");
+        ImGui::SeparatorText(i18n::Tr("缩进与输入"));
+        field(i18n::Tr("Tab 显示宽度与缩进列数"));SettingsSlider("##tab_width",&g_app.settings.tabWidth,2,8);
+        SettingsCheckbox(i18n::Tr("按 Tab 插入空格（关闭后插入制表符）"),&g_app.settings.insertSpaces);
+        SettingsCheckbox(i18n::Tr("回车时自动缩进"),&g_app.settings.autoIndent);
+        SettingsCheckbox(i18n::Tr("自动配对括号与引号"),&g_app.settings.autoCloseBrackets);
+        field(i18n::Tr("滚轮每格滚动行数"));SettingsSlider("##scroll_lines",&g_app.settings.scrollLines,1,12);
+        help(i18n::Tr("缩进宽度同时用于 Tab 显示、鼠标定位、退格和多光标输入。设置只影响后续输入，现有代码保留原样。"));
     }
     if(section==7){
         static std::string message;
         auto apply=[](){
-            g_app.settings.Normalize();g_app.ApplyTheme();g_app.fontRebuildPending=true;g_app.MarkDiag();
+            g_app.settings.Normalize();i18n::SetLanguage(g_app.settings.language);g_app.ApplyTheme();g_app.fontRebuildPending=true;g_app.MarkDiag();
             for(auto& editor:g_app.editors){editor->CloseCompletion();editor->CloseCalltip();editor->m_decorationDirty=true;editor->m_maxLineDirty=true;}
         };
-        ImGui::SeparatorText("恢复备份");
-        field("全部标签恢复快照间隔（秒）");SettingsSlider("##recovery_interval",&g_app.settings.recoveryIntervalSec,1,60);
-        help("恢复快照不会自动覆盖源码。较长间隔可以减少写盘，也会扩大意外退出时可能丢失的编辑范围。");
-        ImGui::SeparatorText("快捷预设");
-        if(ImGui::Button("紧凑竞赛")){g_app.settings.fontSize=16;g_app.settings.uiFontSize=14;g_app.settings.uiDensity=0;g_app.settings.lineHeightPercent=115;apply();message="已应用紧凑预设；点击保存设置后保留。";}
-        if(ImGui::Button("舒适阅读")){g_app.settings.fontSize=20;g_app.settings.uiFontSize=17;g_app.settings.uiDensity=2;g_app.settings.lineHeightPercent=150;apply();message="已应用阅读预设；点击保存设置后保留。";}
-        help("预设仅调整字号、行距和界面疏密，保留配色、快捷键及工具链设置。");
-        ImGui::SeparatorText("导入与导出");
-        if(ImGui::Button("导出偏好 JSON")){
+        ImGui::SeparatorText(i18n::Tr("恢复备份"));
+        field(i18n::Tr("全部标签恢复快照间隔（秒）"));SettingsSlider("##recovery_interval",&g_app.settings.recoveryIntervalSec,1,60);
+        help(i18n::Tr("恢复快照不会自动覆盖源码。较长间隔可以减少写盘，也会扩大意外退出时可能丢失的编辑范围。"));
+        ImGui::SeparatorText(i18n::Tr("快捷预设"));
+        if(ImGui::Button(i18n::Tr("紧凑竞赛"))){g_app.settings.fontSize=16;g_app.settings.uiFontSize=14;g_app.settings.uiDensity=0;g_app.settings.lineHeightPercent=115;apply();message=i18n::Tr("已应用紧凑预设；点击保存设置后保留。");}
+        if(ImGui::Button(i18n::Tr("舒适阅读"))){g_app.settings.fontSize=20;g_app.settings.uiFontSize=17;g_app.settings.uiDensity=2;g_app.settings.lineHeightPercent=150;apply();message=i18n::Tr("已应用阅读预设；点击保存设置后保留。");}
+        help(i18n::Tr("预设仅调整字号、行距和界面疏密，保留配色、快捷键及工具链设置。"));
+        ImGui::SeparatorText(i18n::Tr("导入与导出"));
+        if(ImGui::Button(i18n::Tr("导出偏好 JSON"))){
             std::wstring path;std::string error;
             if(utils::PreferencesFileDialog(true,g_app.dataDir,path)){
-                if(_wcsicmp(path.c_str(),g_app.settingsPath.c_str())==0)message="请选择单独的偏好文件，避免覆盖完整设置。";
-                else message=g_app.settings.ExportPreferences(path,error)?"偏好已导出。":error;
+                if(_wcsicmp(path.c_str(),g_app.settingsPath.c_str())==0)message=i18n::Tr("请选择单独的偏好文件，避免覆盖完整设置。");
+                else message=g_app.settings.ExportPreferences(path,error)?i18n::Tr("偏好已导出。"):error;
             }
         }
-        if(ImGui::Button("导入偏好 JSON")){
+        if(ImGui::Button(i18n::Tr("导入偏好 JSON"))){
             std::wstring path;std::string error;
             if(utils::PreferencesFileDialog(false,g_app.dataDir,path)){
-                if(g_app.settings.ImportPreferences(path,error)){apply();message="偏好已导入；点击保存设置后保留。";}
+                if(g_app.settings.ImportPreferences(path,error)){apply();message=i18n::Tr("偏好已导入；点击保存设置后保留。");}
                 else message=error;
             }
         }
-        if(ImGui::Button("恢复默认偏好")){g_app.settings.ResetPreferences();apply();message="编辑、界面与快捷键已恢复默认；工具链与运行配置保留。";}
-        help("偏好文件包含编辑、外观和快捷键，不导出编译器路径、运行环境或插件凭据。导入失败时保留当前设置。");
+        if(ImGui::Button(i18n::Tr("恢复默认偏好"))){g_app.settings.ResetPreferences();apply();message=i18n::Tr("编辑、界面与快捷键已恢复默认；工具链与运行配置保留。");}
+        help(i18n::Tr("偏好文件包含编辑、外观和快捷键，不导出编译器路径、运行环境或插件凭据。导入失败时保留当前设置。"));
         if(!message.empty())ImGui::TextWrapped("%s",message.c_str());
     }
     }
     ImGui::PopID();
     ImGui::EndChild();
     ImGui::Separator();
-    if (ImGui::Button("保存设置", ImVec2(120, 0))) g_app.SaveSettings();
+    if (ImGui::Button(i18n::Tr("保存设置"), ImVec2(std::max(120.0f,ImGui::CalcTextSize(i18n::Tr("保存设置")).x+ImGui::GetStyle().FramePadding.x*2), 0))) g_app.SaveSettings();
     ImGui::SameLine();
-    if (ImGui::Button("关闭", ImVec2(120, 0))) g_app.showSettings = false;
+    if (ImGui::Button(i18n::Tr("关闭"), ImVec2(120, 0))) g_app.showSettings = false;
     ImGui::End();
 }
 
 static void DrawProblemsWindow() {
-    if(!ImGui::Begin("问题",&g_app.showProblems)) { ImGui::End(); return; }
+    if(!ImGui::Begin(i18n::Window("问题"),&g_app.showProblems)) { ImGui::End(); return; }
     size_t errors=0; for(auto& d:g_app.activeDiags) if(d.isErr) ++errors;
-    ImGui::TextDisabled("当前文件  ·  %zu 个错误   %zu 个警告",errors,g_app.activeDiags.size()-errors);
+    ImGui::TextDisabled(i18n::Tr("当前文件  ·  %zu 个错误   %zu 个警告"),errors,g_app.activeDiags.size()-errors);
     ImGui::Separator();
-    if(g_app.activeDiags.empty()) ImGui::TextDisabled("当前没有诊断问题");
+    if(g_app.activeDiags.empty()) ImGui::TextDisabled(i18n::Tr("当前没有诊断问题"));
     if(ImGui::BeginChild("##problemList",ImVec2(0,0),ImGuiChildFlags_None,ImGuiWindowFlags_HorizontalScrollbar)) {
         for(size_t i=0;i<g_app.activeDiags.size();++i) {
             auto& d=g_app.activeDiags[i]; ImGui::PushID((int)i);
             ImGui::PushStyleColor(ImGuiCol_Text,d.isErr ? ImVec4(0.96f,0.40f,0.43f,1) : ImVec4(0.87f,0.69f,0.29f,1));
-            std::string label=std::string(d.isErr ? "错误" : "警告") + "  ·  " + std::to_string(d.line) + " 行    " + d.msg;
+            std::string label=std::string(d.isErr ? i18n::Tr("错误") : i18n::Tr("警告")) + "  ·  " + std::to_string(d.line) + i18n::Tr(" 行    ") + d.msg;
             if(ImGui::Selectable(label.c_str())) g_app.GotoEditorLine(d.line);
             ImGui::PopStyleColor(); ImGui::PopID();
         }
@@ -1125,28 +1144,28 @@ static void DrawProblemsWindow() {
 }
 
 static void DrawDebuggerWindow() {
-    if(!ImGui::Begin("调试",&g_app.showDebug)) { ImGui::End(); return; }
+    if(!ImGui::Begin(i18n::Window("调试"),&g_app.showDebug)) { ImGui::End(); return; }
     auto state=g_app.debugger.Snapshot();
     ImGui::BeginDisabled(g_app.procBusy.load()||state.active);
-    if(ImGui::Button("开始 (F5)")) g_app.StartCompileRun(BuildAction::Debug);
+    if(ImGui::Button(i18n::Tr("开始 (F5)"))) g_app.StartCompileRun(BuildAction::Debug);
     ImGui::EndDisabled(); ImGui::SameLine();
     ImGui::BeginDisabled(!state.stopped);
-    if(ImGui::Button("继续")) g_app.debugger.Continue();
-    ImGui::SameLine(); if(ImGui::Button("步过")) g_app.debugger.Step();
-    ImGui::SameLine(); if(ImGui::Button("步入")) g_app.debugger.Step(true);
+    if(ImGui::Button(i18n::Tr("继续"))) g_app.debugger.Continue();
+    ImGui::SameLine(); if(ImGui::Button(i18n::Tr("步过"))) g_app.debugger.Step();
+    ImGui::SameLine(); if(ImGui::Button(i18n::Tr("步入"))) g_app.debugger.Step(true);
     ImGui::EndDisabled(); ImGui::SameLine();
     ImGui::BeginDisabled(!state.active);
-    if(ImGui::Button("暂停")) g_app.debugger.Pause();
-    ImGui::SameLine(); if(ImGui::Button("停止")) g_app.debugger.Stop();
+    if(ImGui::Button(i18n::Tr("暂停"))) g_app.debugger.Pause();
+    ImGui::SameLine(); if(ImGui::Button(i18n::Tr("停止"))) g_app.debugger.Stop();
     ImGui::EndDisabled();
     ImGui::SameLine(); ImGui::TextDisabled("(?)");
-    if(ImGui::IsItemHovered()) ImGui::SetTooltip("Ctrl+点击行号设置断点；没有断点时暂停在 main。\n调试使用 -g -O0；设置中可指定输入文件，留空为 EOF。");
+    if(ImGui::IsItemHovered()) ImGui::SetTooltip(i18n::Tr("Ctrl+点击行号设置断点；没有断点时暂停在 main。\n调试使用 -g -O0；设置中可指定输入文件，留空为 EOF。"));
     if(!state.status.empty()) ImGui::TextWrapped("%s",state.status.c_str());
     ImGui::Separator();
     auto variables=[&]() {
-        if(state.variables.empty()) ImGui::TextDisabled("暂停后显示局部变量");
+        if(state.variables.empty()) ImGui::TextDisabled(i18n::Tr("暂停后显示局部变量"));
         if(ImGui::BeginTable("##vars",2,ImGuiTableFlags_RowBg|ImGuiTableFlags_Resizable|ImGuiTableFlags_ScrollY,ImVec2(0,0))) {
-            ImGui::TableSetupColumn("名称"); ImGui::TableSetupColumn("值"); ImGui::TableHeadersRow();
+            ImGui::TableSetupColumn(i18n::Tr("名称")); ImGui::TableSetupColumn(i18n::Tr("值")); ImGui::TableHeadersRow();
             for(const auto& v:state.variables) { ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextUnformatted(v.first.c_str()); ImGui::TableNextColumn(); ImGui::TextUnformatted(v.second.c_str()); }
             ImGui::EndTable();
         }
@@ -1158,39 +1177,39 @@ static void DrawDebuggerWindow() {
             if(ImGui::Selectable(label.c_str())) { g_app.debugger.SelectFrame(f.level); if(!f.file.empty()&&f.line>0) g_app.OpenAtFile(f.file,f.line); }
             ImGui::PopID();
         }
-        if(state.frames.empty()) ImGui::TextDisabled("暂停后显示调用栈");
+        if(state.frames.empty()) ImGui::TextDisabled(i18n::Tr("暂停后显示调用栈"));
     };
     if(ImGui::BeginTabBar("##debugViews")) {
-        if(ImGui::BeginTabItem("检查")) {
+        if(ImGui::BeginTabItem(i18n::Tr("检查"))) {
             static std::string expression;
             ImGui::BeginDisabled(!state.stopped); ImGui::SetNextItemWidth(-66);
             bool evaluate=ui::InputTextStd("##debugExpression",expression,ImGuiInputTextFlags_EnterReturnsTrue);
-            ImGui::SameLine(); evaluate=ImGui::Button("求值")||evaluate;
+            ImGui::SameLine(); evaluate=ImGui::Button(i18n::Tr("求值"))||evaluate;
             if(evaluate&&!expression.empty()) g_app.debugger.Evaluate(expression);
             ImGui::EndDisabled();
-            if(!state.evaluation.empty()) ImGui::TextWrapped("结果: %s",state.evaluation.c_str());
+            if(!state.evaluation.empty()) ImGui::TextWrapped(i18n::Tr("结果: %s"),state.evaluation.c_str());
             if(ImGui::BeginTable("##inspect",2,ImGuiTableFlags_Resizable|ImGuiTableFlags_BordersInnerV)) {
                 ImGui::TableNextRow(); ImGui::TableNextColumn();
-                ImGui::TextDisabled("局部变量"); ImGui::BeginChild("##debugVariables",ImVec2(0,0)); variables(); ImGui::EndChild();
-                ImGui::TableNextColumn(); ImGui::TextDisabled("调用栈"); ImGui::BeginChild("##debugStack",ImVec2(0,0)); stack(); ImGui::EndChild();
+                ImGui::TextDisabled(i18n::Tr("局部变量")); ImGui::BeginChild("##debugVariables",ImVec2(0,0)); variables(); ImGui::EndChild();
+                ImGui::TableNextColumn(); ImGui::TextDisabled(i18n::Tr("调用栈")); ImGui::BeginChild("##debugStack",ImVec2(0,0)); stack(); ImGui::EndChild();
                 ImGui::EndTable();
             }
             ImGui::EndTabItem();
         }
-        if(ImGui::BeginTabItem("断点")) {
+        if(ImGui::BeginTabItem(i18n::Tr("断点"))) {
             ImGui::BeginChild("##breakpoints",ImVec2(0,0));
             for(auto& editor:g_app.editors) { auto points=editor->m_breakpoints;
                 for(int line:points) {
                     ImGui::PushID((int)editor->m_uid); ImGui::PushID(line);
-                    if(ImGui::SmallButton("移除")) editor->ToggleBreakpoint(line);
+                    if(ImGui::SmallButton(i18n::Tr("移除"))) editor->ToggleBreakpoint(line);
                     ImGui::SameLine(); if(ImGui::Selectable((editor->m_name+":"+std::to_string(line)).c_str())) g_app.OpenAtFile(utils::WToU8(editor->m_path),line);
                     ImGui::PopID(); ImGui::PopID();
                 }
             }
             ImGui::EndChild(); ImGui::EndTabItem();
         }
-        if(ImGui::BeginTabItem("调试日志")) {
-            if(ImGui::SmallButton("复制日志")) ImGui::SetClipboardText(state.log.c_str());
+        if(ImGui::BeginTabItem(i18n::Tr("调试日志"))) {
+            if(ImGui::SmallButton(i18n::Tr("复制日志"))) ImGui::SetClipboardText(state.log.c_str());
             ImGui::BeginChild("##debugLog",ImVec2(0,0),ImGuiChildFlags_None,ImGuiWindowFlags_HorizontalScrollbar);
             ImGui::TextUnformatted(state.log.c_str()); ImGui::EndChild(); ImGui::EndTabItem();
         }
@@ -1201,20 +1220,20 @@ static void DrawDebuggerWindow() {
 
 // ---------------- 关于 ----------------
 static void DrawAboutWindow() {
-    if (!ImGui::Begin("关于", &g_app.showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (!ImGui::Begin(i18n::Window("关于"), &g_app.showAbout, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         return;
     }
     ImGui::Text("ccrIDE v%s",CCRIDE_VERSION);
-    ImGui::Text("构建时间: %s",CCRIDE_BUILD_TIME);
-    ImGui::TextUnformatted("轻量 C++ IDE，支持编译、运行与 GDB 调试");
-    ImGui::TextUnformatted("技术栈: Dear ImGui + GLFW + OpenGL + WinINet");
-    ImGui::TextWrapped("数据目录: %s", utils::WToU8(g_app.dataDir).c_str());
-    ImGui::TextWrapped("部署方式: %s", g_app.portableMode ? "便携模式，设置跟随程序目录" : "本机模式");
+    ImGui::Text(i18n::Tr("构建时间: %s"),CCRIDE_BUILD_TIME);
+    ImGui::TextUnformatted(i18n::Tr("轻量 C++ IDE，支持编译、运行与 GDB 调试"));
+    ImGui::TextUnformatted(i18n::Tr("技术栈: Dear ImGui + GLFW + OpenGL + WinINet"));
+    ImGui::TextWrapped(i18n::Tr("数据目录: %s"), utils::WToU8(g_app.dataDir).c_str());
+    ImGui::TextWrapped(i18n::Tr("部署方式: %s"), g_app.portableMode ? i18n::Tr("便携模式，设置跟随程序目录") : i18n::Tr("本机模式"));
     ImGui::Separator();
-    ImGui::TextDisabled("全局快捷键可在 设置 -> 快捷键 中自定义");
-    ImGui::TextDisabled("查找 Ctrl+F | 补全 Ctrl+Space | 书签 F2 | 跳转定义 Ctrl+B");
-    if (ImGui::Button("关闭")) g_app.showAbout = false;
+    ImGui::TextDisabled(i18n::Tr("全局快捷键可在 设置 -> 快捷键 中自定义"));
+    ImGui::TextDisabled(i18n::Tr("查找 Ctrl+F | 补全 Ctrl+Space | 书签 F2 | 跳转定义 Ctrl+B"));
+    if (ImGui::Button(i18n::Tr("关闭"))) g_app.showAbout = false;
     ImGui::End();
 }
 
@@ -1228,12 +1247,12 @@ static void DrawSearchWindow() {
     static bool truncated = false, searched = false;
     static std::string status;
 
-    if (!ImGui::Begin("全局查找", &g_app.showSearch)) { ImGui::End(); return; }
+    if (!ImGui::Begin(i18n::Window("全局查找"), &g_app.showSearch)) { ImGui::End(); return; }
 
     bool doSearch = false;
-    ui::InputTextStd("目录", dir);
+    ui::InputTextStd(i18n::Tr("目录"), dir);
     ImGui::SameLine();
-    if (ImGui::Button("浏览##dir")) {
+    if (ImGui::Button(i18n::Tr("浏览##dir"))) {
         std::wstring p;
         if (utils::OpenFileDialog(g_app.dataDir, p)) dir = utils::WToU8(utils::DirName(p));
     }
@@ -1241,17 +1260,17 @@ static void DrawSearchWindow() {
         // 默认搜索当前打开文件的目录
         if (CodeEditor* ed = g_app.ActiveEditor())
             if (ed->HasPath()) dir = utils::WToU8(utils::DirName(ed->m_path));
-        ImGui::TextDisabled("目录将默认使用当前文件的所在目录");
+        ImGui::TextDisabled(i18n::Tr("目录将默认使用当前文件的所在目录"));
     }
-    ui::InputTextStd("搜索内容", kw);
-    ImGui::Checkbox("区分大小写", &cs);
+    ui::InputTextStd(i18n::Tr("搜索内容"), kw);
+    ImGui::Checkbox(i18n::Tr("区分大小写"), &cs);
     ImGui::SameLine();
-    ImGui::Checkbox("整词匹配", &wholeWord);
+    ImGui::Checkbox(i18n::Tr("整词匹配"), &wholeWord);
     ImGui::SameLine();
-    if (ImGui::Button("搜索")) doSearch = true;
+    if (ImGui::Button(i18n::Tr("搜索"))) doSearch = true;
     ImGui::SameLine();
-    if (ImGui::Button("清空结果")) { hits.clear(); searched = false; status.clear(); }
-    ImGui::TextDisabled("递归文本文件(≤2MB), 自动跳过隐藏/构建目录; 最多 4000 条结果");
+    if (ImGui::Button(i18n::Tr("清空结果"))) { hits.clear(); searched = false; status.clear(); }
+    ImGui::TextDisabled(i18n::Tr("递归文本文件(≤2MB), 自动跳过隐藏/构建目录; 最多 4000 条结果"));
 
     if (doSearch) {
         hits.clear();
@@ -1341,11 +1360,11 @@ static void DrawSearchWindow() {
                 }
             }
             truncated = ((int)hits.size() >= MAX_HITS);
-            status = "共 " + std::to_string(hits.size()) + " 处结果" + (truncated ? " (已达上限, 已截断)" : "");
+            status = i18n::Tr("共 ") + std::to_string(hits.size()) + i18n::Tr(" 处结果") + (truncated ? i18n::Tr(" (已达上限, 已截断)") : "");
         } else if (kw.empty()) {
-            status = "请输入搜索内容";
+            status = i18n::Tr("请输入搜索内容");
         } else {
-            status = "目录不存在: " + dir;
+            status = i18n::Tr("目录不存在: ") + dir;
         }
     }
 
@@ -1358,8 +1377,8 @@ static void DrawSearchWindow() {
     if (ImGui::BeginChild("##gsearch", avail, false,
                           ImGuiWindowFlags_HorizontalScrollbar)) {
         if (hits.empty()) {
-            if (searched) ImGui::TextDisabled("没有匹配");
-            else ImGui::TextDisabled("在上方输入关键字后点 [搜索]");
+            if (searched) ImGui::TextDisabled(i18n::Tr("没有匹配"));
+            else ImGui::TextDisabled(i18n::Tr("在上方输入关键字后点 [搜索]"));
         }
         for (int i = 0; i < (int)hits.size(); i++) {
             auto& h = hits[i];
@@ -1385,7 +1404,7 @@ static void DrawSearchWindow() {
 // ---------------- 文件树 ----------------
 static std::wstring PickFolderW() {
     BROWSEINFOW bi{};
-    bi.lpszTitle = L"选择要浏览的文件夹";
+    bi.lpszTitle = i18n::Wide(L"选择要浏览的文件夹",L"Select a folder to browse");
     bi.ulFlags   = BIF_RETURNONLYFSDIRS | BIF_USENEWUI;
     PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
     std::wstring r;
@@ -1411,7 +1430,7 @@ static void DrawFileTreeWindow() {
     static std::string nameBuf;
     static bool focusName = false;
 
-    if (!ImGui::Begin("文件", &g_app.showFileTree)) { ImGui::End(); return; }
+    if (!ImGui::Begin(i18n::Window("文件"), &g_app.showFileTree)) { ImGui::End(); return; }
 
     auto listDir = [](const std::wstring& d, std::vector<Entry>& out) {
         std::error_code ec;
@@ -1445,7 +1464,7 @@ static void DrawFileTreeWindow() {
     }
 
     // 工具栏
-    if (ImGui::Button(ImGui::GetContentRegionAvail().x < 180 ? "目录" : "打开文件夹")) {
+    if (ImGui::Button(ImGui::GetContentRegionAvail().x < 180 ? i18n::Tr("目录") : i18n::Tr("打开文件夹"))) {
         std::wstring p = PickFolderW();
         if (!p.empty()) {
             root = p;
@@ -1454,7 +1473,7 @@ static void DrawFileTreeWindow() {
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("刷新")) { cache.clear(); g_shellIcons.Clear(); }
+    if (ImGui::Button(i18n::Tr("刷新"))) { cache.clear(); g_shellIcons.Clear(); }
     ImGui::TextDisabled("%s", utils::WToU8(utils::FileBase(root)).c_str());
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", utils::WToU8(root).c_str());
     ImGui::Separator();
@@ -1465,12 +1484,12 @@ static void DrawFileTreeWindow() {
             if (_wcsicmp(g_app.editors[i]->m_path.c_str(), wp.c_str()) == 0) {
                 g_app.active = i;
                 g_app.SyncDiagPanel();
-                if (ImGuiWindow* w = ImGui::FindWindowByName("编辑器")) ImGui::FocusWindow(w);
+                if (ImGuiWindow* w = ImGui::FindWindowByName(i18n::Window("编辑器"))) ImGui::FocusWindow(w);
                 return;
             }
         g_app.NewFile(wp);
         g_app.MarkDiag();
-        if (ImGuiWindow* w = ImGui::FindWindowByName("编辑器")) ImGui::FocusWindow(w);
+        if (ImGuiWindow* w = ImGui::FindWindowByName(i18n::Window("编辑器"))) ImGui::FocusWindow(w);
     };
 
     // 递归绘制
@@ -1503,11 +1522,11 @@ static void DrawFileTreeWindow() {
                 }
                 if (ImGui::BeginPopupContextItem("dirctx")) {
                     std::wstring here = full;
-                    if (ImGui::MenuItem("新建文件")) { ctxDir = here; modal = "newfile"; nameBuf.clear(); focusName = true; }
-                    if (ImGui::MenuItem("新建文件夹")) { ctxDir = here; modal = "newdir"; nameBuf.clear(); focusName = true; }
+                    if (ImGui::MenuItem(i18n::Tr("新建文件"))) { ctxDir = here; modal = "newfile"; nameBuf.clear(); focusName = true; }
+                    if (ImGui::MenuItem(i18n::Tr("新建文件夹"))) { ctxDir = here; modal = "newdir"; nameBuf.clear(); focusName = true; }
                     ImGui::Separator();
-                    if (ImGui::MenuItem("刷新")) { cache.erase(full); }
-                    if (ImGui::MenuItem("在资源管理器中打开")) {
+                    if (ImGui::MenuItem(i18n::Tr("刷新"))) { cache.erase(full); }
+                    if (ImGui::MenuItem(i18n::Tr("在资源管理器中打开"))) {
                         ShellExecuteW(nullptr, L"open", full.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
                     }
                     ImGui::EndPopup();
@@ -1526,15 +1545,15 @@ static void DrawFileTreeWindow() {
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s",utils::WToU8(full).c_str());
                 if (ImGui::BeginPopupContextItem("filectx")) {
                     std::wstring here = full;
-                    if (ImGui::MenuItem("打开")) openFile(here);
-                    if (ImGui::MenuItem("复制路径")) ImGui::SetClipboardText(utils::WToU8(here).c_str());
-                    if (ImGui::MenuItem("在资源管理器中显示")) {
+                    if (ImGui::MenuItem(i18n::Tr("打开"))) openFile(here);
+                    if (ImGui::MenuItem(i18n::Tr("复制路径"))) ImGui::SetClipboardText(utils::WToU8(here).c_str());
+                    if (ImGui::MenuItem(i18n::Tr("在资源管理器中显示"))) {
                         std::wstring args = L"/select,\"" + here + L"\"";
                         ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
                     }
                     ImGui::Separator();
-                    if (ImGui::MenuItem("重命名")) { target = here; targetIsDir = false; modal = "rename"; nameBuf = nm; focusName = true; }
-                    if (ImGui::MenuItem("删除")) { target = here; targetIsDir = false; modal = "del"; }
+                    if (ImGui::MenuItem(i18n::Tr("重命名"))) { target = here; targetIsDir = false; modal = "rename"; nameBuf = nm; focusName = true; }
+                    if (ImGui::MenuItem(i18n::Tr("删除"))) { target = here; targetIsDir = false; modal = "del"; }
                     ImGui::EndPopup();
                 }
                 ImGui::PopID();
@@ -1550,18 +1569,18 @@ static void DrawFileTreeWindow() {
 
     // ---- 新建/重命名 输入弹窗 ----
     if (!modal.empty() && modal != "del") {
-        ImGui::OpenPopup(modal == "newfile" ? "新建文件" :
-                         modal == "newdir"  ? "新建文件夹" : "重命名");
+        ImGui::OpenPopup(modal == "newfile" ? i18n::Tr("新建文件") :
+                         modal == "newdir"  ? i18n::Tr("新建文件夹") : i18n::Tr("重命名"));
     }
     if (modal == "newfile" || modal == "newdir" || modal == "rename") {
-        const char* title = modal == "newfile" ? "新建文件" :
-                            modal == "newdir"  ? "新建文件夹" : "重命名";
+        const char* title = modal == "newfile" ? i18n::Tr("新建文件") :
+                            modal == "newdir"  ? i18n::Tr("新建文件夹") : i18n::Tr("重命名");
         if (ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
             if (focusName) { ImGui::SetKeyboardFocusHere(); focusName = false; }
-            ui::InputTextStd("名称", nameBuf);
-            bool ok = ImGui::Button("确定", ImVec2(90, 0));
+            ui::InputTextStd(i18n::Tr("名称"), nameBuf);
+            bool ok = ImGui::Button(i18n::Tr("确定"), ImVec2(90, 0));
             ImGui::SameLine();
-            if (ImGui::Button("取消", ImVec2(90, 0))) modal.clear();
+            if (ImGui::Button(i18n::Tr("取消"), ImVec2(90, 0))) modal.clear();
             if (ok && !nameBuf.empty()) {
                 std::wstring nm = utils::U8ToW(nameBuf);
                 // 简单防路径注入
@@ -1578,7 +1597,7 @@ static void DrawFileTreeWindow() {
                         std::wstring np  = dir + L"\\" + nm;
                         if (modal == "newfile") {
                             if (utils::WriteFileU8(np, ""))
-                                g_app.console.Append("[文件] 已创建: " + utils::WToU8(np) + "\n",
+                                g_app.console.Append(i18n::Tr("[文件] 已创建: ") + utils::WToU8(np) + "\n",
                                                      IM_COL32(140, 220, 150, 255));
                             cache.erase(dir);
                             if (GetFileAttributesW(dir.c_str()) != INVALID_FILE_ATTRIBUTES) openFile(np);
@@ -1595,18 +1614,18 @@ static void DrawFileTreeWindow() {
         }
     }
     // ---- 删除确认弹窗 ----
-    if (modal == "del") ImGui::OpenPopup("确认删除");
-    if (modal == "del" && ImGui::BeginPopupModal("确认删除", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextWrapped("确定删除吗? (不可恢复)");
+    if (modal == "del") ImGui::OpenPopup(i18n::Tr("确认删除"));
+    if (modal == "del" && ImGui::BeginPopupModal(i18n::Tr("确认删除"), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextWrapped(i18n::Tr("确定删除吗? (不可恢复)"));
         ImGui::TextUnformatted(utils::WToU8(target).c_str());
-        if (ImGui::Button("删除", ImVec2(90, 0))) {
+        if (ImGui::Button(i18n::Tr("删除"), ImVec2(90, 0))) {
             std::error_code ec;
             fs::remove_all(target, ec);
             cache.erase(utils::DirName(target));
             modal.clear();
         }
         ImGui::SameLine();
-        if (ImGui::Button("取消", ImVec2(90, 0))) modal.clear();
+        if (ImGui::Button(i18n::Tr("取消"), ImVec2(90, 0))) modal.clear();
         ImGui::EndPopup();
     }
     ImGui::End();
@@ -1615,11 +1634,11 @@ static void DrawFileTreeWindow() {
 // ---------------- 恢复弹窗 ----------------
 static void DrawRecoverModal() {
     if (g_app.recoverPending) {
-        ImGui::OpenPopup("恢复");
+        ImGui::OpenPopup(i18n::Tr("恢复"));
         g_app.recoverPending = false;
     }
-    if (ImGui::BeginPopupModal("恢复", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("选择需要恢复的标签。恢复为副本，不会覆盖原文件。");
+    if (ImGui::BeginPopupModal(i18n::Tr("恢复"), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted(i18n::Tr("选择需要恢复的标签。恢复为副本，不会覆盖原文件。"));
         ImGui::BeginChild("##recovery_tabs",ImVec2(560,220),ImGuiChildFlags_Borders);
         for(size_t i=0;i<g_app.recoverSnapshot.tabs.size();++i) {
             const auto& tab=g_app.recoverSnapshot.tabs[i];bool chosen=g_app.recoverSelection[i]!=0;
@@ -1627,8 +1646,8 @@ static void DrawRecoverModal() {
             if(!tab.path.empty())ImGui::TextDisabled("%s",tab.path.c_str());ImGui::PopID();
         }
         ImGui::EndChild();
-        if(ImGui::Button("恢复选中标签")){g_app.ApplyRecovery(true);ImGui::CloseCurrentPopup();}
-        ImGui::SameLine();if(ImGui::Button("忽略本次恢复")){g_app.ApplyRecovery(false);ImGui::CloseCurrentPopup();}
+        if(ImGui::Button(i18n::Tr("恢复选中标签"))){g_app.ApplyRecovery(true);ImGui::CloseCurrentPopup();}
+        ImGui::SameLine();if(ImGui::Button(i18n::Tr("忽略本次恢复"))){g_app.ApplyRecovery(false);ImGui::CloseCurrentPopup();}
         ImGui::EndPopup();
     }
 }
@@ -1639,22 +1658,22 @@ static void DrawCloseConfirmModal() {
     if (g_app.pendingClose >= 0) {
         idx = g_app.pendingClose;
         g_app.pendingClose = -1;   // 消费标记
-        ImGui::OpenPopup("未保存的更改");
+        ImGui::OpenPopup(i18n::Tr("未保存的更改"));
     }
-    if (ImGui::BeginPopupModal("未保存的更改", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("该文件有未保存的修改, 确定关闭?");
-        if (ImGui::Button("关闭", ImVec2(100, 0))) {
+    if (ImGui::BeginPopupModal(i18n::Tr("未保存的更改"), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted(i18n::Tr("该文件有未保存的修改, 确定关闭?"));
+        if (ImGui::Button(i18n::Tr("关闭"), ImVec2(100, 0))) {
             g_app.RemoveEditorAt(idx);   // 由 App 统一修正 active 索引
             idx = -1;
             ImGui::CloseCurrentPopup();
-            ImGuiWindow* w = ImGui::FindWindowByName("编辑器");
+            ImGuiWindow* w = ImGui::FindWindowByName(i18n::Window("编辑器"));
             if (w) ImGui::FocusWindow(w);
         }
         ImGui::SameLine();
-        if (ImGui::Button("取消", ImVec2(100, 0))) {
+        if (ImGui::Button(i18n::Tr("取消"), ImVec2(100, 0))) {
             idx = -1;
             ImGui::CloseCurrentPopup();
-            ImGuiWindow* w = ImGui::FindWindowByName("编辑器");
+            ImGuiWindow* w = ImGui::FindWindowByName(i18n::Window("编辑器"));
             if (w) ImGui::FocusWindow(w);
         }
         ImGui::EndPopup();
@@ -1667,7 +1686,7 @@ static void CycleEditor(int dir) {   // 下一个/上一个标签 (默认 Ctrl+]
     if (n < 2 || g_app.active < 0) return;
     g_app.active = (g_app.active + dir + n) % n;
     g_app.SyncDiagPanel();
-    if (ImGuiWindow* w = ImGui::FindWindowByName("编辑器")) ImGui::FocusWindow(w);
+    if (ImGuiWindow* w = ImGui::FindWindowByName(i18n::Window("编辑器"))) ImGui::FocusWindow(w);
 }
 
 static void HandleGlobalShortcuts() {

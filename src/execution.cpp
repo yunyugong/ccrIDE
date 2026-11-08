@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "execution.h"
 #include "utils.h"
 #include <algorithm>
@@ -100,18 +101,18 @@ std::wstring CommandLine(const std::wstring& exe, const std::vector<std::wstring
 }
 const char* ReasonText(Reason reason) {
     switch (reason) {
-    case Reason::Exited: return "已退出";
-    case Reason::LaunchFailed: return "启动失败";
-    case Reason::Cancelled: return "已停止";
-    case Reason::TimedOut: return "超时 (TLE)";
-    case Reason::OutputLimit: return "输出超限 (OLE)";
-    case Reason::MemoryLimit: return "内存超限 (MLE)";
-    case Reason::ProcessLimit: return "进程数量超限";
-    case Reason::IoError: return "输入输出失败";
-    case Reason::CleanupFailed: return "进程清理失败";
-    case Reason::QueueTimeout: return "排队超时";
+    case Reason::Exited: return i18n::Tr("已退出");
+    case Reason::LaunchFailed: return i18n::Tr("启动失败");
+    case Reason::Cancelled: return i18n::Tr("已停止");
+    case Reason::TimedOut: return i18n::Tr("超时 (TLE)");
+    case Reason::OutputLimit: return i18n::Tr("输出超限 (OLE)");
+    case Reason::MemoryLimit: return i18n::Tr("内存超限 (MLE)");
+    case Reason::ProcessLimit: return i18n::Tr("进程数量超限");
+    case Reason::IoError: return i18n::Tr("输入输出失败");
+    case Reason::CleanupFailed: return i18n::Tr("进程清理失败");
+    case Reason::QueueTimeout: return i18n::Tr("排队超时");
     }
-    return "未知状态";
+    return i18n::Tr("未知状态");
 }
 
 static bool Cancelled(const Request& r){return (r.cancel&&r.cancel->load())||(r.isCancelled&&r.isCancelled());}
@@ -120,28 +121,28 @@ static Result RunManaged(const Request& r) {
     const ULONGLONG start = GetTickCount64();
     auto fail = [&](const char* step) { result.error = SystemError(step); };
     if (Cancelled(r)) { result.reason = Reason::Cancelled; return result; }
-    if (r.exe.empty() || !r.limits.outputBytes) { result.error = "可执行文件为空或输出上限为零"; return result; }
+    if (r.exe.empty() || !r.limits.outputBytes) { result.error = i18n::Tr("可执行文件为空或输出上限为零"); return result; }
     if (r.exe.find(L'\0') != std::wstring::npos || r.cwd.find(L'\0') != std::wstring::npos) {
-        result.error = "路径包含无效的空字符"; return result;
+        result.error = i18n::Tr("路径包含无效的空字符"); return result;
     }
     for (const auto& arg : r.args) if (arg.find(L'\0') != std::wstring::npos) {
-        result.error = "程序参数包含无效的空字符"; return result;
+        result.error = i18n::Tr("程序参数包含无效的空字符"); return result;
     }
     std::wstring executable = r.exe;
     if (executable.find_first_of(L"/\\") == std::wstring::npos) {
         wchar_t found[32768];
         DWORD length = SearchPathW(nullptr, executable.c_str(), L".exe", 32768, found, nullptr);
-        if (!length || length >= 32768) { fail("查找可执行文件失败"); return result; }
+        if (!length || length >= 32768) { fail(i18n::Tr("查找可执行文件失败")); return result; }
         executable.assign(found, length);
     }
     for (const auto& env : r.environment) {
         if (env.first.empty() || env.first.find_first_of(L"=\0", 0, 2) != std::wstring::npos ||
             env.second.find(L'\0') != std::wstring::npos) {
-            result.error = "环境变量名称或内容无效"; return result;
+            result.error = i18n::Tr("环境变量名称或内容无效"); return result;
         }
     }
     Handle job(InjectedFailure("job-create") ? nullptr : CreateJobObjectW(nullptr, nullptr));
-    if (!job) { fail("创建进程组失败"); return result; }
+    if (!job) { fail(i18n::Tr("创建进程组失败")); return result; }
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
     limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
     limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
@@ -151,17 +152,17 @@ static Result RunManaged(const Request& r) {
         limits.JobMemoryLimit = r.limits.memoryBytes;
     }
     if (InjectedFailure("job-configure") || !SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
-        fail("设置进程组限制失败"); return result;
+        fail(i18n::Tr("设置进程组限制失败")); return result;
     }
     Handle port(CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1));
-    if (!port) { fail("创建资源通知通道失败"); return result; }
+    if (!port) { fail(i18n::Tr("创建资源通知通道失败")); return result; }
     JOBOBJECT_ASSOCIATE_COMPLETION_PORT association{reinterpret_cast<void*>(1), port};
     if (!SetInformationJobObject(job, JobObjectAssociateCompletionPortInformation, &association, sizeof(association))) {
-        fail("设置资源通知失败"); return result;
+        fail(i18n::Tr("设置资源通知失败")); return result;
     }
     Handle outRead, outWrite, errRead, errWrite;
     if (!Pipe(outRead, outWrite, false) || !Pipe(errRead, errWrite, false)) {
-        fail("创建输出管道失败"); return result;
+        fail(i18n::Tr("创建输出管道失败")); return result;
     }
     // Overlapped stdin keeps a target which never reads input from blocking cancellation.
     static std::atomic<unsigned long> nextPipe{0};
@@ -169,20 +170,20 @@ static Result RunManaged(const Request& r) {
                         std::to_wstring(++nextPipe);
     Handle inWrite(CreateNamedPipeW(name.c_str(), PIPE_ACCESS_OUTBOUND | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
                                    PIPE_TYPE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 4096, 4096, 0, nullptr));
-    if (!inWrite) { fail("创建输入管道失败"); return result; }
+    if (!inWrite) { fail(i18n::Tr("创建输入管道失败")); return result; }
     SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
     Handle inRead(CreateFileW(name.c_str(), GENERIC_READ, 0, &security, OPEN_EXISTING, 0, nullptr));
-    if (!inRead) { fail("连接输入管道失败"); return result; }
+    if (!inRead) { fail(i18n::Tr("连接输入管道失败")); return result; }
     Handle inputEvent(CreateEventW(nullptr, TRUE, FALSE, nullptr));
-    if (!inputEvent) { fail("创建输入事件失败"); return result; }
+    if (!inputEvent) { fail(i18n::Tr("创建输入事件失败")); return result; }
     OVERLAPPED writeOp{}; writeOp.hEvent = inputEvent;
     // Client already connected; accepting it must return ERROR_PIPE_CONNECTED.
     if (!ConnectNamedPipe(inWrite, &writeOp) && GetLastError() != ERROR_PIPE_CONNECTED) {
-        fail("接受输入管道连接失败"); return result;
+        fail(i18n::Tr("接受输入管道连接失败")); return result;
     }
     HANDLE inherited[] = {inRead, outWrite, errWrite};
     Attributes attributes;
-    if (!attributes.init(inherited, 3)) { fail("限制继承句柄失败"); return result; }
+    if (!attributes.init(inherited, 3)) { fail(i18n::Tr("限制继承句柄失败")); return result; }
     STARTUPINFOEXW startup{};
     startup.StartupInfo.cb = sizeof(startup);
     startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
@@ -199,23 +200,23 @@ static Result RunManaged(const Request& r) {
     if (!CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, TRUE, flags,
                         env.empty() ? nullptr : env.data(), r.cwd.empty() ? nullptr : r.cwd.c_str(),
                         &startup.StartupInfo, &info)) {
-        fail("创建进程失败"); return result;
+        fail(i18n::Tr("创建进程失败")); return result;
     }
     Handle process(info.hProcess), thread(info.hThread);
     auto abortLaunch = [&](bool assigned) {
         BOOL killed = assigned ? TerminateJobObject(job, 1) : TerminateProcess(process, 1);
         if (!killed || WaitForSingleObject(process, 3000) != WAIT_OBJECT_0) {
             result.reason = Reason::CleanupFailed;
-            result.error += " 未启动的目标进程清理失败";
+            result.error += i18n::Tr(" 未启动的目标进程清理失败");
         }
     };
     if (InjectedFailure("job-assign") || !AssignProcessToJobObject(job, process)) {
-        fail("进程无法加入受控进程组，已取消启动");
+        fail(i18n::Tr("进程无法加入受控进程组，已取消启动"));
         abortLaunch(false);
         return result;
     }
     if (InjectedFailure("resume") || ResumeThread(thread) == DWORD(-1)) {
-        fail("恢复进程失败"); abortLaunch(true); return result;
+        fail(i18n::Tr("恢复进程失败")); abortLaunch(true); return result;
     }
     result.started = true; result.reason = Reason::Exited;
     if(r.onStarted)r.onStarted(info.dwProcessId);
@@ -262,13 +263,13 @@ static Result RunManaged(const Request& r) {
             if (Cancelled(r)) { result.reason = Reason::Cancelled; break; }
             DWORD available = 0;
             if (!PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr)) {
-                if (GetLastError() != ERROR_BROKEN_PIPE) { result.reason = Reason::IoError; fail("读取输出状态失败"); }
+                if (GetLastError() != ERROR_BROKEN_PIPE) { result.reason = Reason::IoError; fail(i18n::Tr("读取输出状态失败")); }
                 break;
             }
             if (!available) break;
             char buffer[8192]; DWORD got = 0;
             if (!ReadFile(pipe, buffer, (DWORD)(std::min)(sizeof(buffer), (size_t)available), &got, nullptr)) {
-                if (GetLastError() != ERROR_BROKEN_PIPE) { result.reason = Reason::IoError; fail("读取输出失败"); }
+                if (GetLastError() != ERROR_BROKEN_PIPE) { result.reason = Reason::IoError; fail(i18n::Tr("读取输出失败")); }
                 break;
             }
             if (!got) break;
@@ -288,7 +289,7 @@ static Result RunManaged(const Request& r) {
                 DWORD error = GetLastError();
                 if (error == ERROR_IO_INCOMPLETE) return;
                 writing = false;
-                if (error != ERROR_BROKEN_PIPE && error != ERROR_NO_DATA) { result.reason = Reason::IoError; fail("发送输入失败"); }
+                if (error != ERROR_BROKEN_PIPE && error != ERROR_NO_DATA) { result.reason = Reason::IoError; fail(i18n::Tr("发送输入失败")); }
                 inWrite.reset(); return;
             }
             writing = false; inputPos += sent;
@@ -305,7 +306,7 @@ static Result RunManaged(const Request& r) {
         else if (GetLastError() == ERROR_IO_PENDING) writing = true;
         else {
             DWORD error = GetLastError();
-            if (error != ERROR_BROKEN_PIPE && error != ERROR_NO_DATA) { result.reason = Reason::IoError; fail("发送输入失败"); }
+            if (error != ERROR_BROKEN_PIPE && error != ERROR_NO_DATA) { result.reason = Reason::IoError; fail(i18n::Tr("发送输入失败")); }
             inWrite.reset();
         }
     };
@@ -327,39 +328,39 @@ static Result RunManaged(const Request& r) {
         }
         inputTick();
         DWORD wait = WaitForSingleObject(process, 10);
-        if (wait == WAIT_FAILED) { result.reason = Reason::IoError; fail("等待进程失败"); break; }
+        if (wait == WAIT_FAILED) { result.reason = Reason::IoError; fail(i18n::Tr("等待进程失败")); break; }
         if (wait == WAIT_OBJECT_0) {
             parentExited = true;
             // The main process may exit leaving descendants holding pipes open.
-            if (!stopJob()) { result.reason = Reason::CleanupFailed; fail("清理后代进程失败"); break; }
+            if (!stopJob()) { result.reason = Reason::CleanupFailed; fail(i18n::Tr("清理后代进程失败")); break; }
         }
     }
     // Stop the entire job on every path, even after a normal main-process exit.
-    if (!parentExited && !stopJob()) { result.reason = Reason::CleanupFailed; fail("终止进程组失败"); }
+    if (!parentExited && !stopJob()) { result.reason = Reason::CleanupFailed; fail(i18n::Tr("终止进程组失败")); }
     if (writing) { DWORD sent = 0; CancelIoEx(inWrite, &writeOp); GetOverlappedResult(inWrite, &writeOp, &sent, TRUE); }
     inWrite.reset();
-    if (WaitForSingleObject(process, 3000) != WAIT_OBJECT_0) { result.reason = Reason::CleanupFailed; result.error += " 等待主进程退出失败"; }
+    if (WaitForSingleObject(process, 3000) != WAIT_OBJECT_0) { result.reason = Reason::CleanupFailed; result.error += i18n::Tr(" 等待主进程退出失败"); }
     const ULONGLONG cleanupStart = GetTickCount64();
     for (const auto& child : tracked) {
         ULONGLONG elapsed = GetTickCount64() - cleanupStart;
         DWORD remaining = elapsed >= 3000 ? 0 : (DWORD)(3000 - elapsed);
         if (WaitForSingleObject(*child.second, remaining) != WAIT_OBJECT_0) {
-            result.reason = Reason::CleanupFailed; result.error += " 等待后代进程退出失败";
+            result.reason = Reason::CleanupFailed; result.error += i18n::Tr(" 等待后代进程退出失败");
         }
     }
     JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting{};
     for (;;) {
         if (!QueryInformationJobObject(job, JobObjectBasicAccountingInformation, &accounting, sizeof(accounting), nullptr)) {
-            result.reason = Reason::CleanupFailed; fail("查询进程组清理状态失败"); break;
+            result.reason = Reason::CleanupFailed; fail(i18n::Tr("查询进程组清理状态失败")); break;
         }
         if (!accounting.ActiveProcesses) break;
-        if (GetTickCount64() - cleanupStart >= 3000) { result.reason = Reason::CleanupFailed; result.error += " 进程组仍有未退出的进程"; break; }
+        if (GetTickCount64() - cleanupStart >= 3000) { result.reason = Reason::CleanupFailed; result.error += i18n::Tr(" 进程组仍有未退出的进程"); break; }
         Sleep(5);
     }
     notifications();
     if (QueryInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits), nullptr))
         result.peakMemoryBytes = limits.PeakJobMemoryUsed;
-    if (!GetExitCodeProcess(process, &result.exitCode)) { result.reason = Reason::CleanupFailed; fail("读取退出码失败"); }
+    if (!GetExitCodeProcess(process, &result.exitCode)) { result.reason = Reason::CleanupFailed; fail(i18n::Tr("读取退出码失败")); }
     result.elapsedMs = GetTickCount64() - start;
     return result;
 }
@@ -369,10 +370,10 @@ namespace fs=std::filesystem;using nlohmann::json;
 bool ValidId(const std::string& id){return id.size()==32&&std::all_of(id.begin(),id.end(),[](char c){return(c>='0'&&c<='9')||(c>='a'&&c<='f');});}
 std::wstring Scope(){
     Handle token;DWORD size=0;
-    if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&token.value))throw std::runtime_error("无法读取调度用户");
+    if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&token.value))throw std::runtime_error(i18n::Tr("无法读取调度用户"));
     GetTokenInformation(token,TokenUser,nullptr,0,&size);std::vector<unsigned char> data(size);
-    if(!size||!GetTokenInformation(token,TokenUser,data.data(),size,&size))throw std::runtime_error("无法读取用户标识");
-    wchar_t* sid=nullptr;if(!ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(data.data())->User.Sid,&sid))throw std::runtime_error("无法转换用户标识");
+    if(!size||!GetTokenInformation(token,TokenUser,data.data(),size,&size))throw std::runtime_error(i18n::Tr("无法读取用户标识"));
+    wchar_t* sid=nullptr;if(!ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(data.data())->User.Sid,&sid))throw std::runtime_error(i18n::Tr("无法转换用户标识"));
     std::wstring result=L"Local\\ccrIDE.Tasks.v1."+std::wstring(sid);LocalFree(sid);return result;
 }
 ULONGLONG OwnerStart(){FILETIME created{},exit{},kernel{},user{};if(!GetProcessTimes(GetCurrentProcess(),&created,&exit,&kernel,&user))return 0;return(ULONGLONG(created.dwHighDateTime)<<32)|created.dwLowDateTime;}
@@ -385,23 +386,23 @@ void WriteRecord(const TaskInfo& task,ULONGLONG ownerStart,const Request& reques
     json data={{"schema",1},{"id",task.task.id},{"label",task.label},{"state",task.state},{"lane",task.lane},{"ownerPid",task.ownerPid},{"ownerStart",ownerStart},{"childPid",task.childPid},{"exitCode",task.exitCode},{"createdTick",task.createdTick},{"queuedMs",task.queuedMs},{"elapsedMs",task.elapsedMs},{"cwd",utils::WToU8(task.cwd)},{"exe",utils::WToU8(request.exe)},{"arguments",args},{"error",task.error}};
     auto temporary=fs::path(task.task.directory)/"task.json.tmp",file=fs::path(task.task.directory)/"task.json";
     if(!utils::WriteFileU8(temporary.wstring(),data.dump(2,' ',false,json::error_handler_t::replace))||
-       !MoveFileExW(temporary.c_str(),file.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("无法保存任务状态");
+       !MoveFileExW(temporary.c_str(),file.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error(i18n::Tr("无法保存任务状态"));
 }
 struct Slot {std::vector<std::unique_ptr<Handle>> handles;HANDLE owned=nullptr;~Slot(){if(owned)ReleaseMutex(owned);}};
 }
-const char* LaneText(Lane lane){return lane==Lane::Background?"后台检查":lane==Lane::Service?"服务":"前台";}
+const char* LaneText(Lane lane){return lane==Lane::Background?i18n::Tr("后台检查"):lane==Lane::Service?i18n::Tr("服务"):i18n::Tr("前台");}
 std::wstring TaskRoot(){
     wchar_t root[32768]{};DWORD size=GetEnvironmentVariableW(L"CCRIDE_TASK_ROOT",root,32768);if(size&&size<32768)return root;
-    size=GetTempPathW(32768,root);if(!size||size>=32768)throw std::runtime_error("无法确定任务目录");
+    size=GetTempPathW(32768,root);if(!size||size>=32768)throw std::runtime_error(i18n::Tr("无法确定任务目录"));
     return (fs::path(root)/L"ccrIDE"/L"tasks").wstring();
 }
 bool CreateTask(Task& task,std::string& error,const std::wstring& root){
     try{
-        HCRYPTPROV provider=0;if(!CryptAcquireContextW(&provider,nullptr,nullptr,PROV_RSA_FULL,CRYPT_VERIFYCONTEXT|CRYPT_SILENT))throw std::runtime_error("无法生成任务 ID");
-        unsigned char random[16];BOOL ok=CryptGenRandom(provider,sizeof(random),random);CryptReleaseContext(provider,0);if(!ok)throw std::runtime_error("无法生成任务 ID");
+        HCRYPTPROV provider=0;if(!CryptAcquireContextW(&provider,nullptr,nullptr,PROV_RSA_FULL,CRYPT_VERIFYCONTEXT|CRYPT_SILENT))throw std::runtime_error(i18n::Tr("无法生成任务 ID"));
+        unsigned char random[16];BOOL ok=CryptGenRandom(provider,sizeof(random),random);CryptReleaseContext(provider,0);if(!ok)throw std::runtime_error(i18n::Tr("无法生成任务 ID"));
         const char* hex="0123456789abcdef";std::string id;for(unsigned char c:random){id+=hex[c>>4];id+=hex[c&15];}
         auto base=fs::absolute(fs::path(root.empty()?TaskRoot():root));fs::create_directories(base);auto dir=base/utils::U8ToW(id);
-        if(!fs::create_directory(dir))throw std::runtime_error("任务目录已存在");
+        if(!fs::create_directory(dir))throw std::runtime_error(i18n::Tr("任务目录已存在"));
         fs::create_directories(dir/"work");fs::create_directories(dir/"tmp");task={id,dir.wstring()};error.clear();return true;
     }catch(const std::exception& e){error=e.what();return false;}
 }
@@ -434,17 +435,17 @@ Result Run(const Request& original){
     auto notify=[&](const char* next){state.state=next;WriteRecord(state,ownerStart,request);if(original.onState)try{original.onState(state);}catch(...){}};
     try{
         if(request.task.id.empty()&&!CreateTask(request.task,result.error,request.taskRoot))return result;
-        result.task=request.task;if(!ValidId(request.task.id)||request.task.directory.empty())throw std::runtime_error("任务上下文无效");
+        result.task=request.task;if(!ValidId(request.task.id)||request.task.directory.empty())throw std::runtime_error(i18n::Tr("任务上下文无效"));
         auto directory=fs::absolute(request.task.directory);request.task.directory=directory.wstring();result.task=request.task;
         claim.reset(CreateFileW((directory/L".claimed").c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr));
-        if(!claim)throw std::runtime_error("任务 ID 已使用，不能重复执行");
+        if(!claim)throw std::runtime_error(i18n::Tr("任务 ID 已使用，不能重复执行"));
         claim.reset();
         state.task=request.task;state.label=request.label;state.lane=LaneText(request.lane);state.ownerPid=GetCurrentProcessId();state.createdTick=start;
         if(request.isolateWorkingDirectory)request.cwd=(directory/"work").wstring();state.cwd=request.cwd;result.cwd=request.cwd;
         request.environment[L"CCRIDE_TASK_ID"]=utils::U8ToW(request.task.id);request.environment[L"CCRIDE_TASK_DIR"]=request.task.directory;
         auto has=[&](const wchar_t* key){for(auto& item:request.environment)if(_wcsicmp(item.first.c_str(),key)==0)return true;return false;};
         if(!has(L"TEMP"))request.environment[L"TEMP"]=(directory/"tmp").wstring();if(!has(L"TMP"))request.environment[L"TMP"]=(directory/"tmp").wstring();
-        auto scope=Scope();cancelEvent.reset(CreateEventW(nullptr,TRUE,FALSE,(scope+L".cancel."+utils::U8ToW(request.task.id)).c_str()));if(!cancelEvent)throw std::runtime_error("无法创建任务取消通道");
+        auto scope=Scope();cancelEvent.reset(CreateEventW(nullptr,TRUE,FALSE,(scope+L".cancel."+utils::U8ToW(request.task.id)).c_str()));if(!cancelEvent)throw std::runtime_error(i18n::Tr("无法创建任务取消通道"));
         auto previous=request.isCancelled;
         request.isCancelled=[&](){
             try{return callbackError||(previous&&previous())||WaitForSingleObject(cancelEvent,0)==WAIT_OBJECT_0;}
@@ -456,24 +457,24 @@ Result Run(const Request& original){
         };
         haveState=true;notify("queued");
         int count=request.lane==Lane::Background?1:2;std::wstring lane=request.lane==Lane::Background?L"background":request.lane==Lane::Service?L"service":L"foreground";std::vector<HANDLE> handles{cancelEvent};
-        for(int i=0;i<count;++i){auto handle=std::make_unique<Handle>(CreateMutexW(nullptr,FALSE,(scope+L"."+lane+L"."+std::to_wstring(i)).c_str()));if(!*handle)throw std::runtime_error("无法创建全局并发名额");handles.push_back(*handle);slot.handles.push_back(std::move(handle));}
+        for(int i=0;i<count;++i){auto handle=std::make_unique<Handle>(CreateMutexW(nullptr,FALSE,(scope+L"."+lane+L"."+std::to_wstring(i)).c_str()));if(!*handle)throw std::runtime_error(i18n::Tr("无法创建全局并发名额"));handles.push_back(*handle);slot.handles.push_back(std::move(handle));}
         for(;;){
             result.queuedMs=GetTickCount64()-start;if(Cancelled(request)){result.reason=Reason::Cancelled;break;}
             if(request.queueTimeoutMs&&result.queuedMs>=request.queueTimeoutMs){result.reason=Reason::QueueTimeout;break;}
             DWORD wait=WaitForMultipleObjects(DWORD(handles.size()),handles.data(),FALSE,25);
             if(wait==WAIT_OBJECT_0){result.reason=Reason::Cancelled;break;}
             DWORD index=wait>=WAIT_ABANDONED_0&&wait<WAIT_ABANDONED_0+handles.size()?wait-WAIT_ABANDONED_0:wait-WAIT_OBJECT_0;
-            if(index>0&&index<handles.size()){slot.owned=handles[index];break;}if(wait==WAIT_FAILED)throw std::runtime_error("等待并发名额失败");
+            if(index>0&&index<handles.size()){slot.owned=handles[index];break;}if(wait==WAIT_FAILED)throw std::runtime_error(i18n::Tr("等待并发名额失败"));
         }
         state.queuedMs=result.queuedMs;
         if(slot.owned&&!Cancelled(request)){
             notify("starting");
-            if(request.logOutput){out.open(directory/"stdout.bin",std::ios::binary);err.open(directory/"stderr.bin",std::ios::binary);if(!out||!err)throw std::runtime_error("无法创建任务输出记录");}
+            if(request.logOutput){out.open(directory/"stdout.bin",std::ios::binary);err.open(directory/"stderr.bin",std::ios::binary);if(!out||!err)throw std::runtime_error(i18n::Tr("无法创建任务输出记录"));}
             auto priorStarted=request.onStarted;request.onStarted=[&](DWORD pid){try{state.childPid=pid;notify("running");if(priorStarted)priorStarted(pid);}catch(...){callbackError=true;}};
-            auto priorOutput=request.onOutput;request.onOutput=[&](const std::string& text,bool isErr){try{if(request.logOutput){auto& file=isErr?err:out;file.write(text.data(),text.size());if(!file)throw std::runtime_error("输出记录写入失败");}if(priorOutput)priorOutput(text,isErr);}catch(...){callbackError=true;}};
+            auto priorOutput=request.onOutput;request.onOutput=[&](const std::string& text,bool isErr){try{if(request.logOutput){auto& file=isErr?err:out;file.write(text.data(),text.size());if(!file)throw std::runtime_error(i18n::Tr("输出记录写入失败"));}if(priorOutput)priorOutput(text,isErr);}catch(...){callbackError=true;}};
             result=RunManaged(request);result.task=request.task;result.cwd=request.cwd;result.queuedMs=state.queuedMs;
             if(request.logOutput){out.flush();err.flush();if(!out||!err)callbackError=true;}
-            if(callbackError){result.reason=Reason::IoError;result.error="任务输出回调或记录失败";}
+            if(callbackError){result.reason=Reason::IoError;result.error=i18n::Tr("任务输出回调或记录失败");}
         }else if(slot.owned)result.reason=Reason::Cancelled;
         state.elapsedMs=result.elapsedMs;state.exitCode=result.exitCode;state.error=result.error;
         if(result.reason!=Reason::Exited&&state.error.empty())state.error=ReasonText(result.reason);

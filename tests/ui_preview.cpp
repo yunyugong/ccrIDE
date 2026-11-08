@@ -33,6 +33,9 @@ int main(int argc, char** argv) {
     if ((argc != 2 && argc != 3) || !glfwInit()) return 2;
     std::filesystem::path output(argv[1]);
     std::filesystem::create_directories(output);
+    char previewLanguage[32]{};GetEnvironmentVariableA("CCRIDE_PREVIEW_LANGUAGE",previewLanguage,sizeof(previewLanguage));
+    const bool englishPreview=std::string(previewLanguage)=="en";
+    g_app.settings.language=englishPreview?"en":"zh-CN";i18n::SetLanguage(g_app.settings.language);
     int failures = 0;
     for (int scenario = 0; scenario < 3; ++scenario) {
         int width = scenario == 2 ? 640 : 1280, height = scenario == 2 ? 480 : 840;
@@ -73,7 +76,7 @@ int main(int argc, char** argv) {
                 if (bar) for (auto& tab : bar->Tabs) {
                     const char* name = ImGui::TabBarGetTabName(bar, &tab);
                     if ((frame == 8 && strcmp(name, "+") == 0) ||
-                        (frame == 13 && strstr(name, "未命名.cpp"))) {
+                        (frame == 13 && strstr(name, i18n::Tr("未命名.cpp")))) {
                         testPointer = ImVec2(bar->BarRect.Min.x + tab.Offset + tab.Width * 0.5f,
                                              bar->BarRect.Min.y + bar->BarRect.GetHeight() * 0.5f);
                         io.AddMousePosEvent(testPointer.x, testPointer.y);
@@ -121,6 +124,17 @@ int main(int argc, char** argv) {
             if (frame == 11 && (g_app.editors.size() != 3 || g_app.active != 2)) { ++failures; printf("FAIL new tab selection: count=%d active=%d\n", (int)g_app.editors.size(), g_app.active); }
             if (frame == 16 && (g_app.editors.size() != 2 || g_app.editors[0]->m_uid != originalMainUid)) { ++failures; printf("FAIL middle-click close\n"); }
             glfwSwapBuffers(window);
+        }
+        // A live language change must reuse existing docked windows and IDs.
+        auto* languageEditor=ImGui::FindWindowByName("编辑器");
+        const auto oldDock=languageEditor->DockId;const auto oldId=languageEditor->ID;
+        for(const char* language:{"en","zh-CN",englishPreview?"en":"zh-CN"}){
+            i18n::SetLanguage(language);g_app.settings.language=language;
+            ImGui_ImplOpenGL3_NewFrame();ImGui_ImplGlfw_NewFrame();ImGui::NewFrame();
+            DrawMainMenuBar();DrawWorkspaceToolbar();DrawStatusBar();DrawActivityBar();DrawWorkspaceDock();
+            DrawFileTreeWindow();g_app.console.DrawWindow(&g_app.showConsole);DefaultBottomDock();DrawProblemsWindow();DefaultBottomDock();g_app.terminal.DrawWindow(&g_app.showTerminal,true);DrawEditorWindow();ImGui::Render();
+            auto* current=ImGui::FindWindowByName("编辑器");
+            if(current!=languageEditor||current->ID!=oldId||current->DockId!=oldDock){++failures;printf("FAIL language switch changed docking\n");}
         }
         if(scenario==0) {
             LoadDocumentationTestPlugin();
@@ -293,7 +307,7 @@ int main(int argc, char** argv) {
                 if(frame==2&&(category==3||category==6||category==7))SaveFrame(output/("preferences-"+std::to_string(category)+"-"+std::to_string(scenario)+".bmp"),width,height);
             }
         }
-        g_settingsSearch="自动配对";g_settingsSection=0;
+        g_settingsSearch=englishPreview?"pairing":"自动配对";g_settingsSection=0;
         ImGui_ImplOpenGL3_NewFrame();ImGui_ImplGlfw_NewFrame();ImGui::NewFrame();DrawSettingsWindow();ImGui::Render();
         if(g_settingsSection!=6){++failures;printf("FAIL settings keyword navigation\n");}
         g_settingsSearch.clear();g_settingsSection=3;

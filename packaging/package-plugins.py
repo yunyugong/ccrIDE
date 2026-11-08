@@ -12,6 +12,6 @@ for ident in ('ai-assistant','completion-docs','clangd'):
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         for file in sorted(folder.rglob('*')):
             if file.is_file():z.write(file,ident+'/'+file.relative_to(folder).as_posix())
-        z.writestr(ident+'/README.txt',f"{manifest['name']} v{manifest['version']}\n需要 ccrIDE v{minimum} 或以上（插件 API v{api_version}）。\n在 IDE 中选择 插件 → 安装本地插件，再选择本 ZIP。\n停用或卸载后，普通代码补全仍然可用。\n".encode('utf-8-sig'))
+        z.writestr(ident+'/README.txt',f"{manifest['name']} v{manifest['version']}\nRequires ccrIDE v{minimum}+ (API v{api_version}). Install via Plugins > Install Local Plugin.\nUpdated UI follows the host language in ccrIDE 0.3.7.2+.\n\n需要 ccrIDE v{minimum} 或以上（插件 API v{api_version}）。\n在 IDE 中选择 插件 → 安装本地插件，再选择本 ZIP。\n停用或卸载后，普通代码补全仍然可用。\n".encode('utf-8-sig'))
     archive.with_suffix('.zip.sha256').write_text(hashlib.sha256(archive.read_bytes()).hexdigest()+'  '+archive.name+'\n')
     print(archive)

@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include <windows.h>
 #include <shellapi.h>
 #include <imgui.h>
@@ -86,9 +87,9 @@ static void Draw(const PluginCompletionView* view) {
         auto label=[](const PluginCompletionSource& source) {
             std::string file=source.file; auto sep=file.find_last_of("/\\");
             if(sep!=std::string::npos) file.erase(0,sep+1);
-            return (file.empty() ? std::string("当前文档") : file)+":"+std::to_string(source.line);
+            return (file.empty() ? std::string(i18n::Tr("当前文档")) : file)+":"+std::to_string(source.line);
         };
-        ImGui::TextDisabled("声明来源 · %zu 处",view->sourceCount); ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::TextDisabled(i18n::Tr("声明来源 · %zu 处"),view->sourceCount); ImGui::SetNextItemWidth(-FLT_MIN);
         auto* window=ImGui::GetCurrentWindow();
         if(ImGui::BeginCombo("##completion_source",label(view->sources[chosen]).c_str())) {
             for(int i=0;i<(int)view->sourceCount;++i) {
@@ -101,14 +102,14 @@ static void Draw(const PluginCompletionView* view) {
         }
         if(ImGui::IsItemHovered()) ImGui::SetTooltip("%s",view->sources[chosen].file);
         if(*view->sources[chosen].documentation) { ImGui::Spacing(); DrawCompletionDoc(view->sources[chosen].documentation); }
-        else ImGui::TextDisabled("此处没有声明注释，可切换其他来源查看。");
+        else ImGui::TextDisabled(i18n::Tr("此处没有声明注释，可切换其他来源查看。"));
     }
     ImGui::PopTextWrapPos();
 }
 extern "C" __declspec(dllexport) void Plugin_OnLoadV2(void* context,PluginApi* host) {
-    api=host; ImGui::SetCurrentContext((ImGuiContext*)context);
+    api=host;if(host->GetSetting)i18n::SetLanguage(host->GetSetting("language")); ImGui::SetCurrentContext((ImGuiContext*)context);
     ImGui::SetAllocatorFunctions(api->Allocate,api->Deallocate,api->allocatorUser);
     static const PluginCompletionHooks hooks{Begin,Describe,Draw}; api->RegisterCompletion(&hooks);
 }
-extern "C" __declspec(dllexport) void Plugin_OnFrame() {}
+extern "C" __declspec(dllexport) void Plugin_OnFrame() { if(api&&api->GetSetting)i18n::SetLanguage((api)->GetSetting("language"));}
 extern "C" __declspec(dllexport) void Plugin_OnUnload() { cache.clear(); api=nullptr; }

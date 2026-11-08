@@ -1,6 +1,10 @@
 # ccrIDE
 
-轻量 C++ IDE，使用 Dear ImGui、GLFW 和 OpenGL。当前版本：**0.3.7.1**。
+**简体中文** | [English](README.en.md)
+
+轻量 C++ IDE，使用 Dear ImGui、GLFW 和 OpenGL。当前版本：**0.3.7.2**。
+
+0.3.7.2 新增跟随系统 / 简体中文 / English 语言选项、双语安装程序、GitHub ZIP 插件市场与社区地址 JSON 配置。语言切换立即生效，点击保存设置后保留。新增 [插件接口文档](docs/plugin-api.md)、[GitHub 托管与翻译贡献说明](docs/community.md) 和 [社区贡献指南](CONTRIBUTING.md)。
 
 0.3.7.1 新增 25 项编辑与界面偏好、设置搜索、快捷预设、偏好导入导出及恢复默认。界面字号与编辑器字号独立，旧配置沿用兼容默认值。详见 [自定义设置](docs/customization.md)。
 
@@ -18,9 +22,9 @@
 
 ## 安装与使用
 
-Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查看进度和取消安装。便携 ZIP 提供相同的程序文件，解压后运行 `ccrIDE-v0.3.7.1.exe`。
+Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查看进度和取消安装。便携 ZIP 提供相同的程序文件，解压后运行 `ccrIDE-v0.3.7.2.exe`。
 
-当前 GitHub 仓库提供源码，安装程序和插件 ZIP 尚未上传到 Releases。
+源码与可用发布包见 [GitHub Releases](https://github.com/yunyugong/ccrIDE/releases)；自动生成的源码压缩包不含编译器或已编译程序。
 
 安装包与便携包使用以下相对目录，无需按开发者的盘符创建文件夹：
 
@@ -28,7 +32,7 @@ Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查
 - `plugins/`：已安装插件。
 - `toolchain/mingw64/`：随包编译器和调试器。
 
-移动时携带整个程序目录。更新请选择新目录，保留旧版本及其设置。运行需要支持 OpenGL 3.3 的环境和可显示中文的系统字体。
+移动时携带整个程序目录。更新请选择新目录，保留旧版本及其设置。运行需要支持 OpenGL 3.3 的环境。英文界面不依赖中文字体；显示中文源码仍需合适字体。
 
 ## 功能
 
@@ -53,9 +57,9 @@ AI 助手与补全注释已从主程序移出，分别安装、停用或卸载�
 
 | 插件包 | 功能 |
 |---|---|
-| `ai-assistant-v1.2.0.zip` | OpenAI 兼容接口、流式或非流式对话、多轮历史、附带选中代码和插入回复 |
-| `completion-docs-v1.0.0.zip` | 轻量补全的注释全文、声明文件与行号、多个头文件来源切换、可点击网址 |
-| `clangd-v1.2.0.zip` | 独立 clangd 服务、嵌套模板语义补全、实时诊断、定义跳转；离线包附带 clangd 23.1.0 |
+| `ai-assistant-v1.2.1.zip` | OpenAI 兼容接口、流式或非流式对话、多轮历史、附带选中代码和插入回复 |
+| `completion-docs-v1.0.1.zip` | 轻量补全的注释全文、声明文件与行号、多个头文件来源切换、可点击网址 |
+| `clangd-v1.2.1.zip` | 独立 clangd 服务、嵌套模板语义补全、实时诊断、定义跳转；离线包附带 clangd 23.1.0 |
 
 安装：在“插件 → 安装本地插件”中选择 ZIP，无需手动解压。AI 和注释插件需要 ccrIDE 0.3.0 或以上，使用插件 API v2。clangd 插件需要 ccrIDE 0.3.5 或以上，使用兼容扩展 API v3。
 

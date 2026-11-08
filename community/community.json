@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/yunyugong/ccrIDE",
+  "releases": "https://github.com/yunyugong/ccrIDE/releases",
+  "issues": "https://github.com/yunyugong/ccrIDE/issues",
+  "documentation": "https://github.com/yunyugong/ccrIDE/blob/main/docs/plugin-api.md",
+  "marketplace": "https://raw.githubusercontent.com/yunyugong/ccrIDE/main/community/marketplace.json"
+}

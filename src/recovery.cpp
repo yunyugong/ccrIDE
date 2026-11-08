@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "recovery.h"
 #include "utils.h"
 #include <filesystem>
@@ -43,19 +44,19 @@ bool Save(const std::wstring& directory,const Snapshot& snapshot,std::string& er
         auto file=directory+L"\\workspace.json";temp=file+L".tmp-"+std::to_wstring(GetCurrentProcessId());
         auto text=Encode(snapshot).dump();
         HANDLE handle=CreateFileW(temp.c_str(),GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
-        if(handle==INVALID_HANDLE_VALUE)throw std::runtime_error("无法创建恢复快照");
+        if(handle==INVALID_HANDLE_VALUE)throw std::runtime_error(i18n::Tr("无法创建恢复快照"));
         bool ok=true;size_t pos=0;
         while(pos<text.size()){DWORD written=0;DWORD amount=DWORD(std::min<size_t>(text.size()-pos,1024*1024));if(!WriteFile(handle,text.data()+pos,amount,&written,nullptr)||written!=amount){ok=false;break;}pos+=written;}
         if(ok)ok=FlushFileBuffers(handle)!=FALSE;CloseHandle(handle);
-        if(!ok)throw std::runtime_error("恢复快照写入失败，旧快照已保留");
+        if(!ok)throw std::runtime_error(i18n::Tr("恢复快照写入失败，旧快照已保留"));
         // Keep the previous committed generation in case disk/content corruption is detected.
         if(ValidCurrent(file)){
             backupTemp=file+L".previous.tmp-"+std::to_wstring(GetCurrentProcessId());
             if(!CopyFileW(file.c_str(),backupTemp.c_str(),FALSE) ||
                !MoveFileExW(backupTemp.c_str(),(file+L".previous").c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))
-                throw std::runtime_error("无法保留上一代恢复快照");
+                throw std::runtime_error(i18n::Tr("无法保留上一代恢复快照"));
         }
-        if(!MoveFileExW(temp.c_str(),file.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("恢复快照提交失败");
+        if(!MoveFileExW(temp.c_str(),file.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error(i18n::Tr("恢复快照提交失败"));
         error.clear();return true;
     }catch(const std::exception& e){if(!temp.empty())DeleteFileW(temp.c_str());if(!backupTemp.empty())DeleteFileW(backupTemp.c_str());error=e.what();return false;}
 }
@@ -66,8 +67,8 @@ bool Load(const std::wstring& directory,Snapshot& snapshot,std::string& error) {
         if(GetFileAttributesW(file.c_str())==INVALID_FILE_ATTRIBUTES)continue;found=true;
         std::string text;if(!utils::ReadFileU8(file,text))throw std::runtime_error("read failed");
         auto result=Decode(text);
-        snapshot=std::move(result);error=suffix[0]?"主快照损坏，已读取上一代恢复快照":"";return true;
+        snapshot=std::move(result);error=suffix[0]?i18n::Tr("主快照损坏，已读取上一代恢复快照"):"";return true;
     }catch(...) {}
-    if(found)error="恢复快照损坏，未自动恢复或写入源码";return false;
+    if(found)error=i18n::Tr("恢复快照损坏，未自动恢复或写入源码");return false;
 }
 }

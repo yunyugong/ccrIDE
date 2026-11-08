@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "language_host.h"
 #include "line_changes.h"
 #include "editor.h"
@@ -1525,12 +1526,12 @@ bool CodeEditor::GotoDefinition(bool useLanguage) {
                                 if (std::filesystem::is_regular_file(std::filesystem::path(tp), ec)) { path = tp; break; }
                             }
                         if (!path.empty()) {
-                            g_app.console.Append("[跳转] 打开头文件 \"" + hname + "\" -> " +
+                            g_app.console.Append(i18n::Tr("[跳转] 打开头文件 \"") + hname + "\" -> " +
                                                  utils::WToU8(path) + "\n", IM_COL32(140, 200, 255, 255));
                             g_app.OpenAtFile(utils::WToU8(path), 1);
                             return true;
                         }
-                        g_app.console.Append("[跳转] 未找到头文件 \"" + hname + "\" (请检查 include 路径)\n",
+                        g_app.console.Append(i18n::Tr("[跳转] 未找到头文件 \"") + hname + "\" (请检查 include 路径)\n",
                                              IM_COL32(255, 180, 90, 255));
                         return false;
                     }
@@ -1541,7 +1542,7 @@ bool CodeEditor::GotoDefinition(bool useLanguage) {
 
     std::string id = IdentAt(m_cursor);
     if (id.empty()) {
-        g_app.console.Append("[跳转] 光标处无标识符\n", IM_COL32(255, 180, 90, 255));
+        g_app.console.Append(i18n::Tr("[跳转] 光标处无标识符\n"), IM_COL32(255, 180, 90, 255));
         return false;
     }
     if (id == "int" || id == "char" || id == "void" || id == "bool" ||
@@ -1552,7 +1553,7 @@ bool CodeEditor::GotoDefinition(bool useLanguage) {
         id == "class" || id == "struct" || id == "enum" || id == "namespace" ||
         id == "using" || id == "template" || id == "typename" || id == "public" ||
         id == "private" || id == "include") {
-        g_app.console.Append("[跳转] \"" + id + "\" 是关键字, 无定义\n", IM_COL32(255, 180, 90, 255));
+        g_app.console.Append(i18n::Tr("[跳转] \"") + id + "\" 是关键字, 无定义\n", IM_COL32(255, 180, 90, 255));
         return false;
     }
 
@@ -1562,7 +1563,7 @@ bool CodeEditor::GotoDefinition(bool useLanguage) {
         if (dp >= m_text.size()) return false;
         int line = (int)LineOf(dp) + 1;
         std::string fname = HasPath() ? utils::WToU8(m_path) : m_name;
-        g_app.console.Append("[跳转] \"" + id + "\" -> " + fname + ":" + std::to_string(line) + "\n",
+        g_app.console.Append(i18n::Tr("[跳转] \"") + id + "\" -> " + fname + ":" + std::to_string(line) + "\n",
                              IM_COL32(140, 200, 255, 255));
         GotoLine(line);
         return true;
@@ -1570,11 +1571,11 @@ bool CodeEditor::GotoDefinition(bool useLanguage) {
     auto jumpToFile = [&](const std::wstring& file, int line) -> bool {
         if (file.empty() || line <= 0) return false;
         if (_wcsicmp(file.c_str(), m_path.c_str()) == 0) {
-            g_app.console.Append("[跳转] \"" + id + "\" -> " + m_name + ":" + std::to_string(line) + "\n",
+            g_app.console.Append(i18n::Tr("[跳转] \"") + id + "\" -> " + m_name + ":" + std::to_string(line) + "\n",
                                  IM_COL32(140, 200, 255, 255));
             GotoLine(line);
         } else {
-            g_app.console.Append("[跳转] \"" + id + "\" -> " + utils::WToU8(file) + ":" +
+            g_app.console.Append(i18n::Tr("[跳转] \"") + id + "\" -> " + utils::WToU8(file) + ":" +
                                  std::to_string(line) + "\n", IM_COL32(140, 200, 255, 255));
             g_app.OpenAtFile(utils::WToU8(file), line);
         }
@@ -1698,7 +1699,7 @@ bool CodeEditor::GotoDefinition(bool useLanguage) {
         if (hitEd) break;
     }
     if (!hitEd) {
-        g_app.console.Append("[跳转] 未找到 \"" + id + "\" 的定义 (已扫描打开的 " +
+        g_app.console.Append(i18n::Tr("[跳转] 未找到 \"") + id + "\" 的定义 (已扫描打开的 " +
                              std::to_string(g_app.editors.size()) + " 个标签)\n",
                              IM_COL32(255, 120, 120, 255));
         return false;
@@ -1711,7 +1712,7 @@ bool CodeEditor::GotoDefinition(bool useLanguage) {
     }
     hitEd->GotoLine(hitLine);
     std::string fname = hitEd->HasPath() ? utils::WToU8(hitEd->m_path) : hitEd->m_name;
-    g_app.console.Append("[跳转] \"" + id + "\" -> " + fname + ":" + std::to_string(hitLine) + "\n",
+    g_app.console.Append(i18n::Tr("[跳转] \"") + id + "\" -> " + fname + ":" + std::to_string(hitLine) + "\n",
                          IM_COL32(140, 200, 255, 255));
     return true;
 }
@@ -2690,28 +2691,28 @@ void CodeEditor::DrawFindBar() {
         FindNext(false);
     }
     ImGui::SameLine();
-    if (ImGui::Button("上一个")) FindNext(true);
+    if (ImGui::Button(i18n::Tr("上一个"))) FindNext(true);
     ImGui::SameLine();
-    if (ImGui::Button("下一个")) FindNext(false);
+    if (ImGui::Button(i18n::Tr("下一个"))) FindNext(false);
     ImGui::SameLine();
     ImGui::TextDisabled("%d/%d", m_findIdx + 1, (int)m_findMatches.size());
     ImGui::SameLine();
     bool oldCs = m_findCaseSensitive, oldWw = m_findWholeWord;
     if (ImGui::Checkbox("Aa", &m_findCaseSensitive)) RecomputeMatches();
     ImGui::SameLine();
-    if (ImGui::Checkbox("整词", &m_findWholeWord)) RecomputeMatches();
+    if (ImGui::Checkbox(i18n::Tr("整词"), &m_findWholeWord)) RecomputeMatches();
     ImGui::SameLine();
-    if (ImGui::Button("关闭")) { m_findOpen = false; m_findMatches.clear(); m_findIdx = -1; }
+    if (ImGui::Button(i18n::Tr("关闭"))) { m_findOpen = false; m_findMatches.clear(); m_findIdx = -1; }
     // ---- 替换行 ----
     ImGui::SetNextItemWidth(220);
     if (ui::InputTextStd("##replace", m_replaceStr, ImGuiInputTextFlags_EnterReturnsTrue))
         ReplaceOne();
     ImGui::SameLine();
-    if (ImGui::Button("替换")) ReplaceOne();
+    if (ImGui::Button(i18n::Tr("替换"))) ReplaceOne();
     ImGui::SameLine();
-    if (ImGui::Button("全部替换")) ReplaceAll();
+    if (ImGui::Button(i18n::Tr("全部替换"))) ReplaceAll();
     ImGui::SameLine();
-    ImGui::TextDisabled("Ctrl+G 跳转行 | F2 书签 | Shift+F2 上书签");
+    ImGui::TextDisabled(i18n::Tr("Ctrl+G 跳转行 | F2 书签 | Shift+F2 上书签"));
 }
 
 // 替换当前选中的匹配 (无选中则先跳到下一个)
@@ -2773,7 +2774,7 @@ void CodeEditor::ReplaceAll() {
         RebuildLines();
         m_cursorMoved = true;
         g_app.MarkDiag();
-        g_app.console.Append("[编辑] 全部替换: " + std::to_string(count) + " 处 (可 Ctrl+Z 撤销)\n",
+        g_app.console.Append(i18n::Tr("[编辑] 全部替换: ") + std::to_string(count) + i18n::Tr(" 处 (可 Ctrl+Z 撤销)\n"),
                              IM_COL32(140, 200, 160, 255));
     }
     m_findMatches.clear();
@@ -2790,9 +2791,9 @@ void CodeEditor::DrawGotoBar() {
         m_gotoOpen = false;
     }
     ImGui::SameLine();
-    if (ImGui::Button("跳转")) { GotoLine(m_gotoLine); m_gotoOpen = false; }
+    if (ImGui::Button(i18n::Tr("跳转"))) { GotoLine(m_gotoLine); m_gotoOpen = false; }
     ImGui::SameLine();
-    if (ImGui::Button("取消")) m_gotoOpen = false;
+    if (ImGui::Button(i18n::Tr("取消"))) m_gotoOpen = false;
 }
 
 // ===================================================================
@@ -2804,17 +2805,17 @@ void CodeEditor::DrawContextMenu() {
     int curLine = (int)LineOf(m_cursor);
     bool isBM = HasBookmark(curLine);
 
-    if (ImGui::MenuItem("撤销", "Ctrl+Z")) Undo();
-    if (ImGui::MenuItem("重做", "Ctrl+Y")) Redo();
+    if (ImGui::MenuItem(i18n::Tr("撤销"), "Ctrl+Z")) Undo();
+    if (ImGui::MenuItem(i18n::Tr("重做"), "Ctrl+Y")) Redo();
     ImGui::Separator();
-    if (ImGui::MenuItem("剪切", "Ctrl+X", false, hasSel)) {
+    if (ImGui::MenuItem(i18n::Tr("剪切"), "Ctrl+X", false, hasSel)) {
         ImGui::SetClipboardText(GetSelectionText().c_str());
         DeleteSelection();
     }
-    if (ImGui::MenuItem("复制", "Ctrl+C", false, hasSel)) {
+    if (ImGui::MenuItem(i18n::Tr("复制"), "Ctrl+C", false, hasSel)) {
         ImGui::SetClipboardText(GetSelectionText().c_str());
     }
-    if (ImGui::MenuItem("粘贴", "Ctrl+V")) {
+    if (ImGui::MenuItem(i18n::Tr("粘贴"), "Ctrl+V")) {
         const char* clip = ImGui::GetClipboardText();
         if (clip && *clip) {
             std::string s = clip;
@@ -2829,15 +2830,15 @@ void CodeEditor::DrawContextMenu() {
         }
     }
     ImGui::Separator();
-    if (ImGui::MenuItem(isBM ? "取消书签" : "切换书签", "Ctrl+F2")) ToggleBookmark();
-    if (ImGui::MenuItem("下一个书签", "F2", false, !m_bookmarks.empty())) NextBookmark();
-    if (ImGui::MenuItem("上一个书签", "Shift+F2", false, !m_bookmarks.empty())) PrevBookmark();
-    if (ImGui::MenuItem("清除全部书签", nullptr, false, !m_bookmarks.empty())) ClearAllBookmarks();
+    if (ImGui::MenuItem(isBM ? i18n::Tr("取消书签") : i18n::Tr("切换书签"), "Ctrl+F2")) ToggleBookmark();
+    if (ImGui::MenuItem(i18n::Tr("下一个书签"), "F2", false, !m_bookmarks.empty())) NextBookmark();
+    if (ImGui::MenuItem(i18n::Tr("上一个书签"), "Shift+F2", false, !m_bookmarks.empty())) PrevBookmark();
+    if (ImGui::MenuItem(i18n::Tr("清除全部书签"), nullptr, false, !m_bookmarks.empty())) ClearAllBookmarks();
     ImGui::Separator();
-    if (ImGui::MenuItem("跳转到定义", "Ctrl+B / Ctrl+点击", false, !IdentAt(m_cursor).empty())) GotoDefinition();
-    if (ImGui::MenuItem("切换断点", "Ctrl+行号")) ToggleBreakpoint((int)LineOf(m_cursor)+1);
+    if (ImGui::MenuItem(i18n::Tr("跳转到定义"), i18n::Tr("Ctrl+B / Ctrl+点击"), false, !IdentAt(m_cursor).empty())) GotoDefinition();
+    if (ImGui::MenuItem(i18n::Tr("切换断点"), i18n::Tr("Ctrl+行号"))) ToggleBreakpoint((int)LineOf(m_cursor)+1);
     ImGui::Separator();
-    if (ImGui::MenuItem("全选", "Ctrl+A")) SelectAll();
+    if (ImGui::MenuItem(i18n::Tr("全选"), "Ctrl+A")) SelectAll();
     ImGui::EndPopup();
 }
 
@@ -3571,9 +3572,9 @@ void CodeEditor::Draw() {
         float wKind = 0, wText = 0;
         for (int k = 0; k < shown; k++) {
             const CompItem& it = m_compItems[m_compScroll + k];
-            wKind = std::max(wKind, ImGui::CalcTextSize(it.kind).x);
+            wKind = std::max(wKind, ImGui::CalcTextSize(i18n::Tr(it.kind)).x);
             float w = ImGui::CalcTextSize(it.label.c_str()).x;
-            if (!it.hint.empty()) w += ImGui::CalcTextSize(TrimSig(it.hint).c_str()).x + 10.0f;
+            if (!it.hint.empty()) w += ImGui::CalcTextSize(TrimSig(i18n::Tr(it.hint.c_str())).c_str()).x + 10.0f;
             wText = std::max(wText, w);
         }
         const float winW = std::min(std::max(340.0f, 20.0f + wKind + 8.0f + wText + 38.0f),
@@ -3600,7 +3601,7 @@ void CodeEditor::Draw() {
             const ImU32 matchCol = IM_COL32(255,214,120,255);
             const ImU32 hintCol  = IM_COL32(150,150,160,255);
             ImGui::PushStyleColor(ImGuiCol_Text, textCol);
-            ImGui::Text("%s", m_compPrefix.empty() ? "补全" : m_compPrefix.c_str());
+            ImGui::Text("%s", m_compPrefix.empty() ? i18n::Tr("补全") : m_compPrefix.c_str());
             ImGui::PopStyleColor();
             ImGui::SameLine();
             ImGui::TextDisabled("%d/%d", m_compIdx + 1, total);
@@ -3630,7 +3631,7 @@ void CodeEditor::Draw() {
                 float ty = rp.y + (rowH - fs) * 0.5f;
                 // 类型图标: 圆点 + 类型名 (按类型着色)
                 pdl->AddCircleFilled(ImVec2(rp.x + 12.0f, rp.y + rowH * 0.5f), 3.5f, kc, 12);
-                pdl->AddText(font, fs, ImVec2(rp.x + 20.0f, ty), kc, it.kind);
+                pdl->AddText(font, fs, ImVec2(rp.x + 20.0f, ty), kc, i18n::Tr(it.kind));
                 // 候选文本 + 匹配高亮
                 std::vector<int> mpos;
                 CompMatchPositions(it.label, hlPrefix, mpos);
@@ -3638,13 +3639,13 @@ void CodeEditor::Draw() {
                 DrawCompLabel(pdl, lp, it.label, mpos, textCol, matchCol);
                 if (!it.hint.empty()) {
                     float lw = ImGui::CalcTextSize(it.label.c_str()).x;
-                    pdl->AddText(font, fs, ImVec2(lp.x + lw + 8.0f, ty), hintCol, TrimSig(it.hint).c_str());
+                    pdl->AddText(font, fs, ImVec2(lp.x + lw + 8.0f, ty), hintCol, TrimSig(i18n::Tr(it.hint.c_str())).c_str());
                 }
                 if (clicked) { m_compIdx = i; AcceptCompletion(); break; }
             }
             ImGui::PopStyleVar();
             if (total > visible)
-                ImGui::TextDisabled("... 共 %d 项 (↑↓ 滚动)", total);
+                ImGui::TextDisabled(i18n::Tr("... 共 %d 项 (↑↓ 滚动)"), total);
             // AcceptCompletion may clear the candidate vector during this frame.
             if (detailsH>0 && m_compOpen && m_compIdx>=0 && m_compIdx<(int)m_compItems.size()) {
                 ImGui::Separator();

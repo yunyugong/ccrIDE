@@ -7,6 +7,7 @@
 #include <windows.h>
 
 struct Settings {
+    std::string language = "auto"; // auto / zh-CN / en
     std::string gppPath;          // 手动指定的 g++ 路径 (空 = 自动查找)
     std::string theme = "dark";   // dark / light
     std::string marketUrl;        // 远程插件市场 JSON 地址 (空 = 仅本地)

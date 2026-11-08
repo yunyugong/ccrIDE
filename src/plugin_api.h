@@ -36,7 +36,7 @@ typedef struct PluginCompletionHooks {
 typedef struct PluginApi {
     const char* (*GetDataDir)(void);        // 数据目录 (D:\ccrIDE\ 之类)
     void        (*Log)(const char* msg);    // 写入宿主日志/控制台
-    const char* (*GetSetting)(const char* key); // 读取宿主设置 (gppPath/theme/marketUrl)
+    const char* (*GetSetting)(const char* key); // Read gppPath/theme/marketUrl/language (effective en or zh-CN); copy before the next call
     unsigned int apiVersion;
     size_t structSize;
     void (*RegisterCommand)(const char* id,const char* label,void (*execute)(void));

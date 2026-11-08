@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "ai_assist.h"
 #include "../../src/plugin_api.h"
 #include <filesystem>
@@ -28,14 +29,14 @@ static void Open() { g_open=true; }
 static void OpenSettings() {g_settingsOpen=true;}
 static void DrawSettings() {
     ImGui::SetNextWindowSize(ImVec2(460,340),ImGuiCond_FirstUseEver);
-    if(ImGui::Begin("AI 助手设置",&g_settingsOpen)) {
-        ImGui::Checkbox("启用 AI",&settings.enabled);
-        ImGui::TextUnformatted("接口地址");ImGui::SetNextItemWidth(-FLT_MIN);ui::InputTextStd("##baseUrl",settings.baseUrl);
-        ImGui::TextUnformatted("模型");ImGui::SetNextItemWidth(-FLT_MIN);ui::InputTextStd("##model",settings.model);
+    if(ImGui::Begin(i18n::Window("AI 助手设置"),&g_settingsOpen)) {
+        ImGui::Checkbox(i18n::Tr("启用 AI"),&settings.enabled);
+        ImGui::TextUnformatted(i18n::Tr("接口地址"));ImGui::SetNextItemWidth(-FLT_MIN);ui::InputTextStd("##baseUrl",settings.baseUrl);
+        ImGui::TextUnformatted(i18n::Tr("模型"));ImGui::SetNextItemWidth(-FLT_MIN);ui::InputTextStd("##model",settings.model);
         ImGui::TextUnformatted("API Key");ImGui::SetNextItemWidth(-FLT_MIN);ui::InputTextStd("##apiKey",settings.apiKey,ImGuiInputTextFlags_Password);
         ImGui::Spacing();
-        if(ImGui::Button("保存插件设置")) {SaveSettings();g_settingsOpen=false;}
-        ImGui::TextWrapped("设置独立保存在 AI 插件的数据目录中。发送前可选择是否附带当前选中代码。");
+        if(ImGui::Button(i18n::Tr("保存插件设置"))) {SaveSettings();g_settingsOpen=false;}
+        ImGui::TextWrapped(i18n::Tr("设置独立保存在 AI 插件的数据目录中。发送前可选择是否附带当前选中代码。"));
     }
     ImGui::End();
 }
@@ -75,19 +76,19 @@ void AIState::Send(const std::string& userPrompt, const std::string& selectedCod
     worker = std::thread([this, userPrompt, selectedCode, base, key, model,requestStream]() {
         if (base.empty() || model.empty()) {
             std::lock_guard<std::mutex> lk(mtx);
-            error = "请先在 AI 助手的连接设置中配置接口地址和模型";
+            error = i18n::Tr("请先在 AI 助手的连接设置中配置接口地址和模型");
             busy.store(false);
             streaming.store(false);
             return;
         }
         std::string content = userPrompt;
         if (!selectedCode.empty()) {
-            content += "\n\n选中代码:\n```cpp\n" + selectedCode + "\n```";
+            content += i18n::Tr("\n\n选中代码:\n```cpp\n") + selectedCode + "\n```";
         }
 
         // 构造消息: system + history + 本轮 user
         json msgs = json::array();
-        msgs.push_back(json{{"role", "system"}, {"content", "你是 ccrIDE 的 AI 助手插件，一个 C/C++ 编程助手, 回答简洁准确, 代码用 markdown 代码块给出."}});
+        msgs.push_back(json{{"role", "system"}, {"content", i18n::Tr("你是 ccrIDE 的 AI 助手插件，一个 C/C++ 编程助手, 回答简洁准确, 代码用 markdown 代码块给出.")}});
         {
             std::lock_guard<std::mutex> lk(mtx);
             for (auto& m : history) {
@@ -108,7 +109,7 @@ void AIState::Send(const std::string& userPrompt, const std::string& selectedCod
         std::string finalUserContent = content;
 
         streaming.store(doStream);
-        auto reply=service::Call(ServiceExecutable(),"chat",json{{"baseUrl",base},{"apiKey",key},{"body",body}},stopRequested,[this](const std::string& text){
+        auto reply=service::Call(ServiceExecutable(),"chat",json{{"language",i18n::Language()},{"baseUrl",base},{"apiKey",key},{"body",body}},stopRequested,[this](const std::string& text){
             std::lock_guard<std::mutex> lock(mtx);result+=text;
         });
         std::string finalResult;
@@ -162,7 +163,7 @@ void AIState::TestConnection() {
     stopRequested=false;
     {std::lock_guard<std::mutex> lock(mtx);result.clear();error.clear();}
     worker=std::thread([this,base,key](){
-        auto reply=service::Call(ServiceExecutable(),"models",json{{"baseUrl",base},{"apiKey",key}},stopRequested,[this](const std::string& text){
+        auto reply=service::Call(ServiceExecutable(),"models",json{{"language",i18n::Language()},{"baseUrl",base},{"apiKey",key}},stopRequested,[this](const std::string& text){
             std::lock_guard<std::mutex> lock(mtx);result+=text;
         },30000);
         if(!reply.ok){std::lock_guard<std::mutex> lock(mtx);error=reply.error;}
@@ -171,29 +172,29 @@ void AIState::TestConnection() {
 }
 
 void AIState::DrawWindow(bool* open) {
-    g_api->DockNextWindow("AI 助手",2);
-    if (!ImGui::Begin("AI 助手", open)) { ImGui::End(); return; }
+    g_api->DockNextWindow(i18n::Tr("AI 助手"),2);
+    if (!ImGui::Begin(i18n::Window("AI 助手"), open)) { ImGui::End(); return; }
 
-    if(ImGui::Button("连接设置…")) g_settingsOpen=true;
-    Flow("未启用");ImGui::TextDisabled("%s",settings.enabled ? "已启用" : "未启用");
-    ImGui::Checkbox("附带编辑器选中代码", &includeSelection);
-    Flow("流式输出",105);
-    ImGui::Checkbox("流式输出", &useStream);
-    Flow("测试连接");
-    if (ImGui::Button("测试连接")) TestConnection();
-    Flow("清空结果");
-    if (ImGui::Button("清空结果")) { std::lock_guard<std::mutex> lk(mtx); result.clear(); error.clear(); }
-    Flow("清空对话");
+    if(ImGui::Button(i18n::Tr("连接设置…"))) g_settingsOpen=true;
+    Flow(i18n::Tr("未启用"));ImGui::TextDisabled("%s",settings.enabled ? i18n::Tr("已启用") : i18n::Tr("未启用"));
+    ImGui::Checkbox(i18n::Tr("附带编辑器选中代码"), &includeSelection);
+    Flow(i18n::Tr("流式输出"),105);
+    ImGui::Checkbox(i18n::Tr("流式输出"), &useStream);
+    Flow(i18n::Tr("测试连接"));
+    if (ImGui::Button(i18n::Tr("测试连接"))) TestConnection();
+    Flow(i18n::Tr("清空结果"));
+    if (ImGui::Button(i18n::Tr("清空结果"))) { std::lock_guard<std::mutex> lk(mtx); result.clear(); error.clear(); }
+    Flow(i18n::Tr("清空对话"));
     {
         std::lock_guard<std::mutex> lk(mtx);
         ImGui::BeginDisabled(busy.load() || history.empty());
     }
-    if (ImGui::Button("清空对话")) ClearHistory();
+    if (ImGui::Button(i18n::Tr("清空对话"))) ClearHistory();
     ImGui::EndDisabled();
-    Flow("40 条历史");
+    Flow(i18n::Tr("40 条历史"));
     {
         std::lock_guard<std::mutex> lk(mtx);
-        ImGui::TextDisabled("%zu 条历史", history.size());
+        ImGui::TextDisabled(i18n::Tr("%zu 条历史"), history.size());
     }
 
     ImGui::Separator();
@@ -215,13 +216,13 @@ void AIState::DrawWindow(bool* open) {
         std::lock_guard<std::mutex> lk(mtx);
         bool hasHistoryOrResult = !history.empty() || !result.empty() || !error.empty();
         if (!hasHistoryOrResult) {
-            ImGui::TextDisabled("(暂无对话历史)");
+            ImGui::TextDisabled(i18n::Tr("(暂无对话历史)"));
         } else {
             // 历史
             for (size_t i = 0; i < history.size(); i++) {
                 auto& m = history[i];
                 if (m.role == "user") {
-                    ImGui::TextColored(ImVec4(0.6f, 0.85f, 1.0f, 1), "你:");
+                    ImGui::TextColored(ImVec4(0.6f, 0.85f, 1.0f, 1), i18n::Tr("你:"));
                     ImGui::SameLine();
                     ImGui::TextWrapped("%s", m.content.c_str());
                 } else {
@@ -233,17 +234,17 @@ void AIState::DrawWindow(bool* open) {
             }
             // 本轮 user (发送中) + 正在生成的 result
             if (sending) {
-                ImGui::TextColored(ImVec4(0.6f, 0.85f, 1.0f, 1), "你:");
+                ImGui::TextColored(ImVec4(0.6f, 0.85f, 1.0f, 1), i18n::Tr("你:"));
                 ImGui::SameLine();
                 std::string curPrompt = prompt;
                 if (includeSelection) {
                     if (!Selection().empty())
-                        curPrompt += "  [附选中代码]";
+                        curPrompt += i18n::Tr("  [附选中代码]");
                 }
                 ImGui::TextWrapped("%s", curPrompt.c_str());
                 ImGui::Separator();
                 if (!error.empty()) {
-                    ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "AI 错误: %s", error.c_str());
+                    ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), i18n::Tr("AI 错误: %s"), error.c_str());
                 } else {
                     ImGui::TextColored(ImVec4(0.55f, 1.0f, 0.75f, 1), "AI:");
                     ImGui::SameLine();
@@ -253,7 +254,7 @@ void AIState::DrawWindow(bool* open) {
             } else {
                 // 空闲时也常驻显示最近错误/测试连接结果, 否则失败会"静默消失", 用户无从排查
                 if (!error.empty())
-                    ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "AI 错误: %s", error.c_str());
+                    ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), i18n::Tr("AI 错误: %s"), error.c_str());
                 else if (!result.empty() && result != lastAssist) {
                     // 测试连接等未进 history 的结果; 若 result 只是上轮回复的副本则不重复显示
                     if (history.empty()) {
@@ -268,7 +269,7 @@ void AIState::DrawWindow(bool* open) {
     }
     ImGui::EndChild();
 
-    ImGui::Text("提示:");
+    ImGui::Text(i18n::Tr("提示:"));
     ImGui::PushFont(ImGui::GetFont());
     ui::InputTextMultilineStd("##ai_prompt", prompt, ImVec2(-1, 90),
                               ImGuiInputTextFlags_AllowTabInput |
@@ -276,27 +277,27 @@ void AIState::DrawWindow(bool* open) {
     ImGui::PopFont();
 
     ImGui::BeginDisabled(sending || !settings.enabled);
-    if (ImGui::Button("发送", ImVec2(120, 0)) && !prompt.empty()) {
+    if (ImGui::Button(i18n::Tr("发送"), ImVec2(120, 0)) && !prompt.empty()) {
         std::string sel;
         if (includeSelection) {
             sel = Selection();
         }
         Send(prompt, sel);
     }
-    Flow("生成代码",120);
-    if (ImGui::Button("生成代码", ImVec2(120, 0)) && !prompt.empty()) {
-        std::string p = "请用 C++ 编写: " + prompt + "\n只输出代码, 不要额外解释.";
+    Flow(i18n::Tr("生成代码"),120);
+    if (ImGui::Button(i18n::Tr("生成代码"), ImVec2(120, 0)) && !prompt.empty()) {
+        std::string p = i18n::Tr("请用 C++ 编写: ") + prompt + i18n::Tr("\n只输出代码, 不要额外解释.");
         Send(p, "");
     }
     ImGui::EndDisabled();
-    Flow("停止");
+    Flow(i18n::Tr("停止"));
     if (isStream) {
-        if (ImGui::Button("停止")) Stop();
+        if (ImGui::Button(i18n::Tr("停止"))) Stop();
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.7f, 1), "生成中...");
+        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.7f, 1), i18n::Tr("生成中..."));
     } else if (sending) {
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1, 1, 0.5f, 1), "请求中...");
+        ImGui::TextColored(ImVec4(1, 1, 0.5f, 1), i18n::Tr("请求中..."));
     }
 
     std::string resultCopy;
@@ -311,11 +312,11 @@ void AIState::DrawWindow(bool* open) {
             }
         }
     }
-    Flow("复制结果");
-    if (ImGui::Button("复制结果") && !resultCopy.empty())
+    Flow(i18n::Tr("复制结果"));
+    if (ImGui::Button(i18n::Tr("复制结果")) && !resultCopy.empty())
         ImGui::SetClipboardText(resultCopy.c_str());
-    Flow("插入到编辑器");
-    if (ImGui::Button("插入到编辑器") && !resultCopy.empty()) {
+    Flow(i18n::Tr("插入到编辑器"));
+    if (ImGui::Button(i18n::Tr("插入到编辑器")) && !resultCopy.empty()) {
         {
             std::string code = resultCopy;
             size_t p1 = code.find("```cpp");
@@ -336,7 +337,7 @@ void AIState::DrawWindow(bool* open) {
 
 static AIState state;
 extern "C" __declspec(dllexport) void Plugin_OnLoadV2(void* context,PluginApi* api) {
-    g_api=api; g_open=true; ImGui::SetCurrentContext((ImGuiContext*)context);
+    g_api=api;if(api->GetSetting)i18n::SetLanguage(api->GetSetting("language")); g_open=true; ImGui::SetCurrentContext((ImGuiContext*)context);
     ImGui::SetAllocatorFunctions(api->Allocate,api->Deallocate,api->allocatorUser);
     settingsPath=std::filesystem::u8path(api->GetDataDir())/"plugins"/"ai-assistant"/"settings.json";
     try {
@@ -346,9 +347,9 @@ extern "C" __declspec(dllexport) void Plugin_OnLoadV2(void* context,PluginApi* a
         settings.enabled=j.value("enabled",false); settings.baseUrl=j.value("baseUrl",settings.baseUrl);
         settings.model=j.value("model",settings.model); settings.apiKey=j.value("apiKey",std::string{});
         if(!std::filesystem::exists(settingsPath)) SaveSettings();
-    } catch(...) { api->Log("[AI 插件] 无法读取设置，已使用默认值"); }
+    } catch(...) { api->Log(i18n::Tr("[AI 插件] 无法读取设置，已使用默认值")); }
     api->RegisterCommand("ai-assistant.open","AI 助手",Open);
     api->RegisterCommand("ai-assistant.settings","AI 助手设置",OpenSettings);
 }
-extern "C" __declspec(dllexport) void Plugin_OnFrame() { if(g_open) state.DrawWindow(&g_open);if(g_settingsOpen)DrawSettings(); }
+extern "C" __declspec(dllexport) void Plugin_OnFrame() { if(g_api&&g_api->GetSetting)i18n::SetLanguage((g_api)->GetSetting("language")); if(g_open) state.DrawWindow(&g_open);if(g_settingsOpen)DrawSettings(); }
 extern "C" __declspec(dllexport) void Plugin_OnUnload() { state.Shutdown(); g_api=nullptr; }

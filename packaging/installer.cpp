@@ -1,3 +1,4 @@
+#include "i18n.h"
 // ccrIDE's native offline installer. The payload is a ZIP overlay, not a 7-Zip SFX.
 #include <windows.h>
 #include <commctrl.h>
@@ -15,6 +16,7 @@
 #define CCRIDE_WIDE(x) CCRIDE_WIDE_INNER(x)
 namespace fs=std::filesystem;
 static HWND window,pathEdit,installButton,statusLabel,progressBar,browseButton,shortcutBox,launchBox;
+static HWND languageCombo;
 static std::thread worker;static std::atomic<bool> cancelled{false},running{false};
 static std::mutex mutex;static std::wstring current,errorText;static int percent=0;static fs::path installed;
 static HFONT font,titleFont;static HBRUSH background;
@@ -62,38 +64,54 @@ static HWND Control(const wchar_t* cls,const wchar_t* text,DWORD style,int x,int
     HWND child=CreateWindowExW(cls==std::wstring(L"EDIT") ? WS_EX_CLIENTEDGE : 0,cls,text,WS_CHILD|WS_VISIBLE|style,x,y,w,h,window,(HMENU)(INT_PTR)id,GetModuleHandleW(nullptr),nullptr);
     SendMessageW(child,WM_SETFONT,(WPARAM)font,TRUE);return child;
 }
+static void RefreshLanguage(){
+    SetWindowTextW(window,i18n::Wide(L"ccrIDE 安装程序",L"ccrIDE Setup"));
+    SetWindowTextW(GetDlgItem(window,110),i18n::Wide(L"安装 ccrIDE v" CCRIDE_WIDE(CCRIDE_VERSION),L"Install ccrIDE v" CCRIDE_WIDE(CCRIDE_VERSION)));
+    SetWindowTextW(GetDlgItem(window,111),i18n::Wide(L"轻量 C++ 开发环境 · 内含 g++ 和 GDB · 离线安装",L"Lightweight C++ IDE · Includes GCC and GDB · Offline setup"));
+    SetWindowTextW(GetDlgItem(window,112),i18n::Wide(L"安装目录",L"Installation directory"));
+    SetWindowTextW(browseButton,i18n::Wide(L"浏览…",L"Browse..."));
+    SetWindowTextW(shortcutBox,i18n::Wide(L"创建桌面快捷方式",L"Create desktop shortcut"));
+    SetWindowTextW(launchBox,i18n::Wide(L"完成后启动 ccrIDE",L"Launch ccrIDE when finished"));
+    SetWindowTextW(GetDlgItem(window,113),i18n::Wide(L"AI 助手和补全注释为独立插件。安装后可在“插件 → 安装本地插件”中添加。",L"AI Assistant and Completion Documentation are separate plugins. Add them through Plugins > Install Local Plugin."));
+    SetWindowTextW(statusLabel,i18n::Wide(L"准备就绪。已有版本不会被覆盖。",L"Ready. Existing versions will not be overwritten."));
+    SetWindowTextW(installButton,i18n::Wide(L"安装",L"Install"));SetWindowTextW(GetDlgItem(window,107),i18n::Wide(L"关闭",L"Close"));
+}
 static LRESULT CALLBACK WindowProc(HWND handle,UINT message,WPARAM wp,LPARAM lp) {
     switch(message) {
     case WM_CREATE: {
         window=handle;
         font=CreateFontW(-16,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,0,0,CLEARTYPE_QUALITY,0,L"Segoe UI");
         titleFont=CreateFontW(-28,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,0,0,CLEARTYPE_QUALITY,0,L"Segoe UI");background=CreateSolidBrush(RGB(247,249,252));
-        HWND title=Control(L"STATIC",L"安装 ccrIDE v" CCRIDE_WIDE(CCRIDE_VERSION),0,28,25,590,42,0);SendMessageW(title,WM_SETFONT,(WPARAM)titleFont,TRUE);
-        Control(L"STATIC",L"轻量 C++ 开发环境 · 内含 g++ 和 GDB · 离线安装",0,30,78,590,24,0);
-        Control(L"STATIC",L"安装目录",0,30,125,520,24,0);
+        HWND title=Control(L"STATIC",i18n::Wide(L"安装 ccrIDE v" CCRIDE_WIDE(CCRIDE_VERSION),L"Install ccrIDE v" CCRIDE_WIDE(CCRIDE_VERSION)),0,28,25,400,42,110);SendMessageW(title,WM_SETFONT,(WPARAM)titleFont,TRUE);
+        Control(L"STATIC",i18n::Wide(L"轻量 C++ 开发环境 · 内含 g++ 和 GDB · 离线安装",L"Lightweight C++ IDE · Includes GCC and GDB · Offline setup"),0,30,78,590,24,111);
+        Control(L"STATIC",i18n::Wide(L"安装目录",L"Installation directory"),0,30,125,520,24,112);
         wchar_t local[32768]{};GetEnvironmentVariableW(L"LOCALAPPDATA",local,32768);
         std::wstring initial=(fs::path(local)/L"Programs"/L"ccrIDE-v" CCRIDE_WIDE(CCRIDE_VERSION)).wstring();
         pathEdit=Control(L"EDIT",initial.c_str(),ES_AUTOHSCROLL|WS_TABSTOP,30,155,490,30,100);
-        browseButton=Control(L"BUTTON",L"浏览…",WS_TABSTOP,532,155,88,30,101);
-        shortcutBox=Control(L"BUTTON",L"创建桌面快捷方式",BS_AUTOCHECKBOX|WS_TABSTOP,30,202,280,26,102);SendMessageW(shortcutBox,BM_SETCHECK,BST_CHECKED,0);
-        launchBox=Control(L"BUTTON",L"完成后启动 ccrIDE",BS_AUTOCHECKBOX|WS_TABSTOP,320,202,280,26,103);SendMessageW(launchBox,BM_SETCHECK,BST_CHECKED,0);
-        Control(L"STATIC",L"AI 助手和补全注释为独立插件。安装后可在“插件 → 安装本地插件”中添加。",0,30,244,590,48,0);
+        browseButton=Control(L"BUTTON",i18n::Wide(L"浏览…",L"Browse..."),WS_TABSTOP,532,155,88,30,101);
+        shortcutBox=Control(L"BUTTON",i18n::Wide(L"创建桌面快捷方式",L"Create desktop shortcut"),BS_AUTOCHECKBOX|WS_TABSTOP,30,202,280,26,102);SendMessageW(shortcutBox,BM_SETCHECK,BST_CHECKED,0);
+        launchBox=Control(L"BUTTON",i18n::Wide(L"完成后启动 ccrIDE",L"Launch ccrIDE when finished"),BS_AUTOCHECKBOX|WS_TABSTOP,320,202,280,26,103);SendMessageW(launchBox,BM_SETCHECK,BST_CHECKED,0);
+        Control(L"STATIC",i18n::Wide(L"AI 助手和补全注释为独立插件。安装后可在“插件 → 安装本地插件”中添加。",L"AI Assistant and Completion Documentation are separate plugins. Add them through Plugins > Install Local Plugin."),0,30,244,590,48,113);
         progressBar=Control(PROGRESS_CLASSW,L"",PBS_SMOOTH,30,305,590,12,104);SendMessageW(progressBar,PBM_SETRANGE32,0,100);
-        statusLabel=Control(L"STATIC",L"准备就绪。已有版本不会被覆盖。",0,30,333,590,46,105);
-        installButton=Control(L"BUTTON",L"安装",BS_DEFPUSHBUTTON|WS_TABSTOP,410,397,100,36,106);
-        Control(L"BUTTON",L"关闭",WS_TABSTOP,522,397,98,36,107);return 0;
+        statusLabel=Control(L"STATIC",i18n::Wide(L"准备就绪。已有版本不会被覆盖。",L"Ready. Existing versions will not be overwritten."),0,30,333,590,46,105);
+        installButton=Control(L"BUTTON",i18n::Wide(L"安装",L"Install"),BS_DEFPUSHBUTTON|WS_TABSTOP,410,397,100,36,106);
+        Control(L"BUTTON",i18n::Wide(L"关闭",L"Close"),WS_TABSTOP,522,397,98,36,107);
+        languageCombo=Control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_TABSTOP,445,34,175,180,108);
+        SendMessageW(languageCombo,CB_ADDSTRING,0,(LPARAM)L"System / 系统");SendMessageW(languageCombo,CB_ADDSTRING,0,(LPARAM)L"简体中文");SendMessageW(languageCombo,CB_ADDSTRING,0,(LPARAM)L"English");
+        SendMessageW(languageCombo,CB_SETCURSEL,0,0);return 0;
     }
     case WM_CTLCOLORSTATIC: SetBkColor((HDC)wp,RGB(247,249,252));SetTextColor((HDC)wp,RGB(40,49,65));return (LRESULT)background;
     case WM_ERASEBKGND: {RECT r;GetClientRect(handle,&r);FillRect((HDC)wp,&r,background);return 1;}
     case WM_COMMAND:
+        if(LOWORD(wp)==108 && HIWORD(wp)==CBN_SELCHANGE && !running){auto selected=SendMessageW(languageCombo,CB_GETCURSEL,0,0);i18n::SetLanguage(selected==2?"en":selected==1?"zh-CN":"auto");RefreshLanguage();return 0;}
         if(LOWORD(wp)==101) {
-            BROWSEINFOW info{};info.hwndOwner=handle;info.lpszTitle=L"选择安装位置的上级目录";info.ulFlags=BIF_RETURNONLYFSDIRS|BIF_NEWDIALOGSTYLE;
+            BROWSEINFOW info{};info.hwndOwner=handle;info.lpszTitle=i18n::Wide(L"选择安装位置的上级目录",L"Select the parent installation directory");info.ulFlags=BIF_RETURNONLYFSDIRS|BIF_NEWDIALOGSTYLE;
             auto* selected=SHBrowseForFolderW(&info);if(selected) {wchar_t path[MAX_PATH];if(SHGetPathFromIDListW(selected,path))SetWindowTextW(pathEdit,(fs::path(path)/L"ccrIDE-v" CCRIDE_WIDE(CCRIDE_VERSION)).c_str());CoTaskMemFree(selected);}return 0;
         }
         if(LOWORD(wp)==106 && !running.exchange(true)) {
             if(worker.joinable())worker.join();cancelled=false;
             wchar_t path[32768];GetWindowTextW(pathEdit,path,32768);fs::path target(path);
-            EnableWindow(installButton,FALSE);EnableWindow(pathEdit,FALSE);EnableWindow(browseButton,FALSE);SetWindowTextW(statusLabel,L"正在校验并安装…");
+            EnableWindow(languageCombo,FALSE);EnableWindow(installButton,FALSE);EnableWindow(pathEdit,FALSE);EnableWindow(browseButton,FALSE);SetWindowTextW(statusLabel,i18n::Wide(L"正在校验并安装…",L"Verifying and installing..."));
             worker=std::thread([target,handle]() {
                 std::string error;ULONGLONG last=0;
                 bool ok=Install(target,error,[&](const std::wstring& name,uint64_t done,uint64_t total) {
@@ -109,27 +127,28 @@ static LRESULT CALLBACK WindowProc(HWND handle,UINT message,WPARAM wp,LPARAM lp)
     case WM_APP+2: {
         running=false;if(worker.joinable())worker.join();
         if(wp) {
-            SendMessageW(progressBar,PBM_SETPOS,100,0);SetWindowTextW(statusLabel,L"安装完成。独立插件可通过插件菜单安装。");
+            SendMessageW(progressBar,PBM_SETPOS,100,0);SetWindowTextW(statusLabel,i18n::Wide(L"安装完成。独立插件可通过插件菜单安装。",L"Installation complete. Add optional plugins from the Plugins menu."));
             if(SendMessageW(shortcutBox,BM_GETCHECK,0,0)==BST_CHECKED) Shortcut();
             if(SendMessageW(launchBox,BM_GETCHECK,0,0)==BST_CHECKED) ShellExecuteW(nullptr,L"open",installed.c_str(),nullptr,installed.parent_path().c_str(),SW_SHOWNORMAL);
         } else {
-            std::lock_guard<std::mutex> lock(mutex);SetWindowTextW(statusLabel,errorText.c_str());EnableWindow(installButton,TRUE);EnableWindow(pathEdit,TRUE);EnableWindow(browseButton,TRUE);
+            std::lock_guard<std::mutex> lock(mutex);SetWindowTextW(statusLabel,errorText.c_str());EnableWindow(languageCombo,TRUE);EnableWindow(installButton,TRUE);EnableWindow(pathEdit,TRUE);EnableWindow(browseButton,TRUE);
         }
         return 0;
     }
-    case WM_CLOSE: if(running) {cancelled=true;SetWindowTextW(statusLabel,L"正在取消并清理临时文件…");return 0;}DestroyWindow(handle);return 0;
+    case WM_CLOSE: if(running) {cancelled=true;SetWindowTextW(statusLabel,i18n::Wide(L"正在取消并清理临时文件…",L"Cancelling and removing temporary files..."));return 0;}DestroyWindow(handle);return 0;
     case WM_DESTROY: PostQuitMessage(0);return 0;
     }
     return DefWindowProcW(handle,message,wp,lp);
 }
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show) {
+    i18n::SetLanguage("auto");
     int argc=0;LPWSTR* args=CommandLineToArgvW(GetCommandLineW(),&argc);
     std::wstring previewPath;
-    if(argc==3 && std::wstring(args[1])==L"--preview")previewPath=args[2];
+    if(argc==3 && (std::wstring(args[1])==L"--preview"||std::wstring(args[1])==L"--preview-en")){previewPath=args[2];if(std::wstring(args[1])==L"--preview-en")i18n::SetLanguage("en");}
     if(argc==3 && std::wstring(args[1])==L"--extract") {std::string error;bool ok=Install(args[2],error);LocalFree(args);if(!ok) OutputDebugStringW(Wide(error).c_str());return ok ? 0 : 2;}LocalFree(args);
     CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);INITCOMMONCONTROLSEX controls{sizeof(controls),ICC_PROGRESS_CLASS};InitCommonControlsEx(&controls);
     WNDCLASSW cls{};cls.lpfnWndProc=WindowProc;cls.hInstance=instance;cls.lpszClassName=L"ccrIDE.OfflineInstaller";cls.hCursor=LoadCursor(nullptr,IDC_ARROW);RegisterClassW(&cls);
-    HWND handle=CreateWindowExW(0,cls.lpszClassName,L"ccrIDE 安装程序",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,CW_USEDEFAULT,CW_USEDEFAULT,670,490,nullptr,nullptr,instance,nullptr);
+    HWND handle=CreateWindowExW(0,cls.lpszClassName,i18n::Wide(L"ccrIDE 安装程序",L"ccrIDE Setup"),WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,CW_USEDEFAULT,CW_USEDEFAULT,670,490,nullptr,nullptr,instance,nullptr);
     if(!previewPath.empty()) {
         RECT client{};GetClientRect(handle,&client);bool fits=GetWindowTextLengthW(pathEdit)>0;
         for(int id=100;id<=107;++id) {RECT r{};GetWindowRect(GetDlgItem(handle,id),&r);MapWindowPoints(nullptr,handle,(POINT*)&r,2);if(r.left<0 || r.top<0 || r.right>client.right || r.bottom>client.bottom)fits=false;}

@@ -1,3 +1,5 @@
+#include "i18n.h"
+#include "community.h"
 #include "contest.h"
 #include "language_host.h"
 #include "app.h"
@@ -74,10 +76,10 @@ static bool ParseErrRef(const std::string& s, std::string& outPath, int& outLine
 
 void Console::DrawWindow(bool* open, bool terminalView) {
     if (terminalView && g_app.focusTerminal) { ImGui::SetNextWindowFocus(); g_app.focusTerminal = false; }
-    if (!ImGui::Begin(terminalView ? "终端" : "输出", open)) { ImGui::End(); return; }
-    if (ImGui::Button("清空")) Clear();
+    if (!ImGui::Begin(i18n::Window(terminalView ? "终端" : "输出"), open)) { ImGui::End(); return; }
+    if (ImGui::Button(i18n::Tr("清空"))) Clear();
     ImGui::SameLine();
-    ImGui::Checkbox("自动滚动", &autoScroll);
+    ImGui::Checkbox(i18n::Tr("自动滚动"), &autoScroll);
 
     ImGui::Separator();
 
@@ -88,7 +90,7 @@ void Console::DrawWindow(bool* open, bool terminalView) {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
     ImGui::PushFont(g_app.editorFont ? g_app.editorFont : ImGui::GetFont(),float(g_app.settings.fontSize));
     if (ImGui::BeginChild("##out_body", bodySize, false, ImGuiWindowFlags_HorizontalScrollbar)) {
-        if (lines.empty()) ImGui::TextDisabled(terminalView ? "程序输出将显示在这里；运行时可在下方输入数据" : "构建日志将显示在这里 · F10 编译 / F11 编译并运行");
+        if (lines.empty()) ImGui::TextDisabled(terminalView ? i18n::Tr("程序输出将显示在这里；运行时可在下方输入数据") : i18n::Tr("构建日志将显示在这里 · F10 编译 / F11 编译并运行"));
         for (auto& ln : lines) {
             ImGui::PushStyleColor(ImGuiCol_Text, (ImVec4)ImColor(ln.color));
             ImGui::TextUnformatted(ln.text.c_str());
@@ -110,14 +112,14 @@ void Console::DrawWindow(bool* open, bool terminalView) {
     if (interact) {
         ImGui::Separator();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.85f, 0.55f, 1));
-        ImGui::TextUnformatted("程序运行中, 可输入数据 (回车发送到程序 stdin)");
+        ImGui::TextUnformatted(i18n::Tr("程序运行中, 可输入数据 (回车发送到程序 stdin)"));
         ImGui::PopStyleColor();
         bool send = false;
         ImGui::SetNextItemWidth(std::max(60.0f, ImGui::GetContentRegionAvail().x - 80));
         bool hitEnter = ui::InputTextStd("##stdin_input", stdinBuf,
                                           ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::SameLine();
-        if (ImGui::Button("发送", ImVec2(72, 0)) && !stdinBuf.empty()) send = true;
+        if (ImGui::Button(i18n::Tr("发送"), ImVec2(72, 0)) && !stdinBuf.empty()) send = true;
         // 回车总是发送 (含空行: 某些程序靠空行结束输入); 按钮仅在非空时发送
         if (hitEnter) send = true;
         if (send && g_app.runInteractive.load()) {
@@ -132,6 +134,7 @@ void Console::DrawWindow(bool* open, bool terminalView) {
 //  初始化
 // ===================================================================
 bool App::Init() {
+    i18n::SetLanguage("auto");
     executableDir = utils::GetExeDir();
     portableMode = GetFileAttributesW((executableDir + L"\\portable.ini").c_str()) != INVALID_FILE_ATTRIBUTES;
     if (portableMode) {
@@ -142,7 +145,7 @@ bool App::Init() {
         if (!utils::SelectSaveDir(saveDir)) {
             wchar_t local[32768];
             DWORD count = GetEnvironmentVariableW(L"LOCALAPPDATA", local, 32768);
-            if (!count || count >= 32768) { MessageBoxW(nullptr, L"无法确定可写的数据目录", L"ccrIDE", MB_ICONERROR); return false; }
+            if (!count || count >= 32768) { MessageBoxW(nullptr, i18n::Wide(L"无法确定可写的数据目录",L"Cannot find a writable data directory"), L"ccrIDE", MB_ICONERROR); return false; }
             saveDir = std::wstring(local) + L"\\";
         }
         dataDir = saveDir + L"MiniCPP";
@@ -156,13 +159,17 @@ bool App::Init() {
                                   FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
     if (directoryError || writable == INVALID_HANDLE_VALUE) {
         if (writable != INVALID_HANDLE_VALUE) CloseHandle(writable);
-        MessageBoxW(nullptr, L"数据目录不可写。请将完整安装包解压到个人可写目录后启动。", L"ccrIDE", MB_ICONERROR);
+        MessageBoxW(nullptr, i18n::Wide(L"数据目录不可写。请将完整安装包解压到个人可写目录后启动。",L"Data directory is not writable. Extract the complete package into a writable folder."), L"ccrIDE", MB_ICONERROR);
         return false;
     }
     CloseHandle(writable);
     SetEnvironmentVariableW(L"CCRIDE_TASK_ROOT",(dataDir+L"\\tasks").c_str());
     settingsPath = dataDir + L"\\settings.json";
+    std::string communityText;
+    if(utils::ReadFileU8(dataDir+L"\\community.json",communityText))try{community::config=community::ParseConfig(communityText);}catch(const std::exception& error){console.Append(std::string("[Community] ")+error.what()+"\n",IM_COL32(240,180,80,255));}
+    settings.marketUrl=community::config.market;
     settings.Load(settingsPath);
+    i18n::SetLanguage(settings.language);
     std::string artifactsJson;
     if(utils::ReadFileU8(dataDir+L"\\build-artifacts.json",artifactsJson)) try {
         auto records=nlohmann::json::parse(artifactsJson);
@@ -192,7 +199,7 @@ bool App::Init() {
     } else {
         std::string legacy;
         if(utils::ReadFileU8(dataDir+L"\\autosave.cpp",legacy)&&!legacy.empty()) {
-            recovery::Tab tab;tab.name="旧版恢复.cpp";tab.text=legacy;tab.dirty=true;
+            recovery::Tab tab;tab.name=i18n::Tr("旧版恢复.cpp");tab.text=legacy;tab.dirty=true;
             recoverSnapshot.tabs.push_back(std::move(tab));recoverSelection.push_back(1);recoverPending=true;
         }
     }
@@ -209,21 +216,19 @@ void App::LoadFonts() {
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->Clear();   // 重建 (字号变更) 时先清空
 
-    // 中文字体 (UI)
+    // Windows may be installed on a different drive. English works without CJK fonts.
+    wchar_t windowsDirectory[32768]{};GetWindowsDirectoryW(windowsDirectory,32768);
+    const std::wstring fonts=std::wstring(windowsDirectory)+L"\\Fonts\\";
     std::string cjkFont;
-    const wchar_t* candidates[] = {
-        L"C:\\Windows\\Fonts\\msyh.ttc",
-        L"C:\\Windows\\Fonts\\msyh.ttf",
-        L"C:\\Windows\\Fonts\\simhei.ttf",
-        L"C:\\Windows\\Fonts\\simsun.ttc",
-    };
-    for (auto c : candidates)
-        if (GetFileAttributesW(c) != INVALID_FILE_ATTRIBUTES) { cjkFont = utils::WToU8(c); break; }
+    for(const wchar_t* name:{L"msyh.ttc",L"msyh.ttf",L"simhei.ttf",L"simsun.ttc"}){
+        auto path=fonts+name;if(GetFileAttributesW(path.c_str())!=INVALID_FILE_ATTRIBUTES){cjkFont=utils::WToU8(path);break;}
+    }
 
     uiFont = nullptr;
     if (!cjkFont.empty())
         uiFont = io.Fonts->AddFontFromFileTTF(cjkFont.c_str(), float(settings.uiFontSize), nullptr,
                                               io.Fonts->GetGlyphRangesChineseFull());
+    if(!uiFont){auto latin=utils::WToU8(fonts+L"segoeui.ttf");if(GetFileAttributesW((fonts+L"segoeui.ttf").c_str())!=INVALID_FILE_ATTRIBUTES)uiFont=io.Fonts->AddFontFromFileTTF(latin.c_str(),float(settings.uiFontSize));}
     if (!uiFont) uiFont = io.Fonts->AddFontDefault();
 
     // 编辑器字体: Consolas + 合并中文
@@ -231,17 +236,9 @@ void App::LoadFonts() {
     ImFontConfig cfg;
     cfg.OversampleH = 2;
     cfg.OversampleV = 1;
-    const wchar_t* monoCandidates[] = {
-        L"C:\\Windows\\Fonts\\consola.ttf",
-        L"C:\\Windows\\Fonts\\cour.ttf",
-    };
-    for (auto c : monoCandidates) {
-        std::string p = utils::WToU8(c);
-        if (GetFileAttributesW(c) != INVALID_FILE_ATTRIBUTES) {
-            editorFont = io.Fonts->AddFontFromFileTTF(p.c_str(), (float)settings.fontSize, &cfg,
-                                                      io.Fonts->GetGlyphRangesDefault());
-            if (editorFont) break;
-        }
+    for(const wchar_t* name:{L"consola.ttf",L"cour.ttf"}) {
+        auto path=fonts+name;auto utf8=utils::WToU8(path);
+        if(GetFileAttributesW(path.c_str())!=INVALID_FILE_ATTRIBUTES){editorFont=io.Fonts->AddFontFromFileTTF(utf8.c_str(),float(settings.fontSize),&cfg,io.Fonts->GetGlyphRangesDefault());if(editorFont)break;}
     }
     if (editorFont && !cjkFont.empty()) {
         ImFontConfig merge;
@@ -419,20 +416,20 @@ void App::NewFile(const std::wstring& path) {
         // 前置检查: 拒绝超大文件 (避免卡死/占满内存)
         unsigned long long sz = utils::FileSize(path);
         if (sz > 20ull * 1024 * 1024) {
-            console.Append("[文件] 文件过大 (" + std::to_string(sz / 1024 / 1024) +
-                           " MB), 已取消打开: " + utils::WToU8(path) + "\n",
+            console.Append(i18n::Tr("[文件] 文件过大 (") + std::to_string(sz / 1024 / 1024) +
+                           i18n::Tr(" MB), 已取消打开: ") + utils::WToU8(path) + "\n",
                            IM_COL32(255, 120, 120, 255));
             return;
         }
         std::string content;
         if (!utils::ReadFileU8(path, content)) {
-            console.Append("[文件] 打开失败 (不存在或无权限): " + utils::WToU8(path) + "\n",
+            console.Append(i18n::Tr("[文件] 打开失败 (不存在或无权限): ") + utils::WToU8(path) + "\n",
                            IM_COL32(255, 120, 120, 255));
             return;
         }
         // 含 NUL 字节视为二进制文件, 拒绝打开 (避免空内容保存覆盖损坏原文件)
         if (content.find('\0') != std::string::npos) {
-            console.Append("[文件] 似乎不是文本文件, 已取消打开: " + utils::WToU8(path) + "\n",
+            console.Append(i18n::Tr("[文件] 似乎不是文本文件, 已取消打开: ") + utils::WToU8(path) + "\n",
                            IM_COL32(255, 200, 100, 255));
             return;
         }
@@ -457,7 +454,7 @@ void App::NewFile(const std::wstring& path) {
         ed->SetPath(path);
     } else {
         ed->SetText("");
-        ed->m_name = "未命名.cpp";
+        ed->m_name = i18n::Tr("未命名.cpp");
     }
     ed->RebuildLines();
     active = (int)editors.size();
@@ -472,7 +469,7 @@ void App::OpenFileDialog() {
     for (int i = 0; i < (int)editors.size(); i++)
         if (_wcsicmp(editors[i]->m_path.c_str(), path.c_str()) == 0) { active = i; SyncDiagPanel(); return; }
     NewFile(path);
-    console.Append("[文件] 已打开: " + utils::WToU8(path) + "\n", IM_COL32(140, 180, 255, 255));
+    console.Append(i18n::Tr("[文件] 已打开: ") + utils::WToU8(path) + "\n", IM_COL32(140, 180, 255, 255));
     MarkDiag();   // 打开后触发一次自动语法检查
 }
 
@@ -482,7 +479,7 @@ bool App::SaveActive(bool saveAs) {
     bool wasUntitled = !ed->HasPath();   // 另存为 / 首次保存时记录新路径
     bool ok = saveAs ? ed->SaveAs() : ed->Save();
     if (ok) {
-        console.Append("[文件] 已保存: " + utils::WToU8(ed->m_path) + "\n", IM_COL32(140, 220, 150, 255));
+        console.Append(i18n::Tr("[文件] 已保存: ") + utils::WToU8(ed->m_path) + "\n", IM_COL32(140, 220, 150, 255));
         ed->m_dirty = false;
         if (saveAs || wasUntitled) PushRecent(ed->m_path);   // 新文件名入最近列表
     }
@@ -541,12 +538,12 @@ void App::OpenRecentFile(const std::wstring& path) {
         if (_wcsicmp(editors[i]->m_path.c_str(), path.c_str()) == 0) {
             active = i;
             SyncDiagPanel();
-            if (ImGuiWindow* w = ImGui::FindWindowByName("编辑器")) ImGui::FocusWindow(w);
+            if (ImGuiWindow* w = ImGui::FindWindowByName(i18n::Window("编辑器"))) ImGui::FocusWindow(w);
             return;
         }
     }
     if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        console.Append("[文件] 最近文件不存在: " + utils::WToU8(path) + "\n", IM_COL32(255, 120, 120, 255));
+        console.Append(i18n::Tr("[文件] 最近文件不存在: ") + utils::WToU8(path) + "\n", IM_COL32(255, 120, 120, 255));
         return;
     }
     NewFile(path);
@@ -558,7 +555,7 @@ void App::QueueStdin(const std::wstring& line) {
     size_t pending = line.size();
     for (const auto& item : stdinQueue) pending += item.size();
     if (pending > 16384) {
-        console.Append("[输入] 待发送内容过多，请等待程序读取后重试\n", IM_COL32(255,190,60,255));
+        console.Append(i18n::Tr("[输入] 待发送内容过多，请等待程序读取后重试\n"), IM_COL32(255,190,60,255));
         return;
     }
     stdinQueue.push_back(line);
@@ -590,9 +587,9 @@ void App::BackupNow() {
     if (!ed) return;
     std::wstring name = utils::BackupName();
     if (utils::WriteFileU8(backupDir + L"\\" + name, ed->m_text)) {
-        console.Append("[备份] " + utils::WToU8(name) + "\n", IM_COL32(200, 170, 255, 255));
+        console.Append(i18n::Tr("[备份] ") + utils::WToU8(name) + "\n", IM_COL32(200, 170, 255, 255));
     } else {
-        console.Append("[备份] 失败\n", IM_COL32(255, 120, 120, 255));
+        console.Append(i18n::Tr("[备份] 失败\n"), IM_COL32(255, 120, 120, 255));
     }
 }
 
@@ -684,12 +681,12 @@ void App::StartDiagCheck() {
     if (!utils::WriteFileU8(tmp, ed->m_text)) { diagBusy.store(false); diagStatus.clear(); return; }
 
     uint64_t rev = editRev;
-    diagStatus = "检查中...";
+    diagStatus = i18n::Tr("检查中...");
     if (diagThread.joinable()) diagThread.join();
     diagThread = std::thread([this, gpp, tmp, dir, rev,task]() {
         std::wstring outF,errF;
         auto r = utils::RunProcess(gpp, { tmp, L"-fsyntax-only", L"-std=c++17",L"-iquote",dir },
-                                   dir, outF, errF, 30000, true, &shuttingDown,execution::Lane::Background,"语法检查",task);
+                                   dir, outF, errF, 30000, true, &shuttingDown,execution::Lane::Background,i18n::Tr("语法检查"),task);
         std::vector<Diag> diags = ParseDiags(r.out + "\n" + r.err, utils::WToU8(tmp));
         DeleteFileW(tmp.c_str());   // 检查结束即清理临时文件
         { std::lock_guard<std::mutex> lk(diagMutex); diagResults = std::move(diags); diagDoneRev = rev; diagAutomatic = true; }
@@ -715,9 +712,9 @@ void App::PumpDiagResults() {
     activeDiags = d;
     int ne = 0, nw = 0;
     for (auto& x : d) x.isErr ? ne++ : nw++;
-    if (ne)      diagStatus = std::to_string(ne) + " 错误" + (nw ? ", " + std::to_string(nw) + " 警告" : "");
-    else if (nw) diagStatus = std::to_string(nw) + " 警告";
-    else         diagStatus = "无错误";
+    if (ne)      diagStatus = std::to_string(ne) + i18n::Tr(" 错误") + (nw ? ", " + std::to_string(nw) + i18n::Tr(" 警告") : "");
+    else if (nw) diagStatus = std::to_string(nw) + i18n::Tr(" 警告");
+    else         diagStatus = i18n::Tr("无错误");
 }
 
 void App::SyncDiagPanel() {
@@ -729,7 +726,7 @@ void App::GotoEditorLine(int line) {
     CodeEditor* ed = ActiveEditor();
     if (!ed) return;
     ed->GotoLine(line);
-    if (ImGuiWindow* w = ImGui::FindWindowByName("编辑器")) ImGui::FocusWindow(w);
+    if (ImGuiWindow* w = ImGui::FindWindowByName(i18n::Window("编辑器"))) ImGui::FocusWindow(w);
 }
 
 // 打开/切换到指定文件并跳转行 (输出面板双击 file:line)
@@ -753,7 +750,7 @@ void App::OpenAtFile(const std::string& pathU8, int line) {
         active = found;
         SyncDiagPanel();
         editors[found]->GotoLine(line);
-        if (ImGuiWindow* w = ImGui::FindWindowByName("编辑器")) ImGui::FocusWindow(w);
+        if (ImGuiWindow* w = ImGui::FindWindowByName(i18n::Window("编辑器"))) ImGui::FocusWindow(w);
     }
 }
 
@@ -766,7 +763,7 @@ static void RunInteractiveProc(execution::Request request) {
     request.capture = false;
     request.interactive = true;
     request.cancel = &g_app.killRequested;
-    request.onState=[](const execution::TaskInfo& info){if(info.state=="queued"||info.state=="running")g_app.QueueProcOutput("[任务 "+info.task.id+"] "+(info.state=="queued"?"等待运行名额":"开始运行")+"\n[工作目录] "+utils::WToU8(info.cwd)+"\n",IM_COL32(140,180,255,255),true);};
+    request.onState=[](const execution::TaskInfo& info){if(info.state=="queued"||info.state=="running")g_app.QueueProcOutput(i18n::Tr("[任务 ")+info.task.id+"] "+(info.state=="queued"?i18n::Tr("等待运行名额"):i18n::Tr("开始运行"))+i18n::Tr("\n[工作目录] ")+utils::WToU8(info.cwd)+"\n",IM_COL32(140,180,255,255),true);};
     request.onOutput = [](const std::string& text, bool isErr) {
         g_app.QueueProcOutput(text, isErr ? IM_COL32(255,220,120,255) : IM_COL32(230,230,230,255), true);
     };
@@ -775,19 +772,19 @@ static void RunInteractiveProc(execution::Request request) {
         { std::lock_guard<std::mutex> lock(g_app.stdinMutex); lines.swap(g_app.stdinQueue); }
         std::string input;
         for (const auto& line : lines) input += utils::WToU8(line) + "\n";
-        if (!input.empty()) g_app.QueueProcOutput("[输入] " + input, IM_COL32(120,220,180,255), true);
+        if (!input.empty()) g_app.QueueProcOutput(i18n::Tr("[输入] ") + input, IM_COL32(120,220,180,255), true);
         return input;
     };
     g_app.runInteractive.store(true);
-    g_app.SetProcStatus("运行中 (可输入数据或停止)");
+    g_app.SetProcStatus(i18n::Tr("运行中 (可输入数据或停止)"));
     auto result = execution::Run(request);
     g_app.runInteractive.store(false);
-    std::string summary = "\n[运行] " + std::string(execution::ReasonText(result.reason)) +
-        "，耗时 " + std::to_string(result.elapsedMs) + " ms，峰值提交内存 " +
+    std::string summary = i18n::Tr("\n[运行] ") + std::string(execution::ReasonText(result.reason)) +
+        i18n::Tr("，耗时 ") + std::to_string(result.elapsedMs) + i18n::Tr(" ms，峰值提交内存 ") +
         std::to_string(result.peakMemoryBytes / 1024) + " KiB";
-    if (result.started) summary += "，退出码 " + std::to_string((int)result.exitCode);
-    if (result.exitCode == 0xC0000005UL) summary += " (访问冲突)";
-    if (result.exitCode == 0xC00000FDUL) summary += " (栈溢出)";
+    if (result.started) summary += i18n::Tr("，退出码 ") + std::to_string((int)result.exitCode);
+    if (result.exitCode == 0xC0000005UL) summary += i18n::Tr(" (访问冲突)");
+    if (result.exitCode == 0xC00000FDUL) summary += i18n::Tr(" (栈溢出)");
     if (!result.error.empty()) summary += "\n" + result.error;
     g_app.QueueProcOutput(summary + "\n", result.reason == execution::Reason::Exited && result.exitCode == 0 ?
                          IM_COL32(140,220,150,255) : IM_COL32(255,160,100,255), true);
@@ -874,14 +871,14 @@ std::vector<std::pair<std::string,int>> App::DebugBreakpoints() const {
 
 void App::StartCompileRun(BuildAction action) {
     if (procBusy.load() || debugger.Snapshot().active) {
-        console.Append("[编译] 已有任务进行中\n", IM_COL32(255, 200, 100, 255));
+        console.Append(i18n::Tr("[编译] 已有任务进行中\n"), IM_COL32(255, 200, 100, 255));
         return;
     }
     CodeEditor* ed = ActiveEditor();
     if (!ed) return;
     if (action != BuildAction::Run && !SaveActive(false)) return;
     terminalRevealed = false;
-    if(action==BuildAction::Run && !ed->HasPath()) { console.Append("[运行] 请先编译当前文件\n",IM_COL32(255,190,60,255)); return; }
+    if(action==BuildAction::Run && !ed->HasPath()) { console.Append(i18n::Tr("[运行] 请先编译当前文件\n"),IM_COL32(255,190,60,255)); return; }
 
     std::wstring file = ed->m_path;
     std::wstring dir = utils::DirName(file);
@@ -891,12 +888,12 @@ void App::StartCompileRun(BuildAction action) {
         auto found=lastArtifacts.find(file);
         if(found!=lastArtifacts.end()) exePath=found->second;
         if(exePath.empty() || GetFileAttributesW(exePath.c_str())==INVALID_FILE_ATTRIBUTES) {
-            console.Append("[运行] 当前文件没有已成功编译的程序，请先按 F10 编译\n",IM_COL32(255,190,60,255)); return;
+            console.Append(i18n::Tr("[运行] 当前文件没有已成功编译的程序，请先按 F10 编译\n"),IM_COL32(255,190,60,255)); return;
         }
     } else {
         auto builds=std::filesystem::path(dir)/L".ccrIDE-build";
         std::error_code error; std::filesystem::create_directories(builds,error);
-        if(error) { console.Append("[编译] 无法创建构建目录\n",IM_COL32(255,120,120,255)); return; }
+        if(error) { console.Append(i18n::Tr("[编译] 无法创建构建目录\n"),IM_COL32(255,120,120,255)); return; }
         SYSTEMTIME now; GetLocalTime(&now);
         wchar_t stamp[128]; swprintf(stamp,128,L"-v%04u%02u%02u.%02u%02u%02u.%03u-%lu-%llu.exe",now.wYear,now.wMonth,now.wDay,now.wHour,now.wMinute,now.wSecond,now.wMilliseconds,GetCurrentProcessId(),(unsigned long long)GetTickCount64());
         exePath=(builds/(std::filesystem::path(file).stem().wstring()+stamp)).wstring();
@@ -904,12 +901,12 @@ void App::StartCompileRun(BuildAction action) {
     std::wstring gpp = utils::U8ToW(settings.gppPath);
     bool useTpl = settings.useCmdTemplate && action!=BuildAction::Debug;
     if (action!=BuildAction::Run && !useTpl && (gpp.empty() || GetFileAttributesW(gpp.c_str()) == INVALID_FILE_ATTRIBUTES)) {
-        console.Append("[编译] 找不到 g++ 编译器 (设置 -> g++ 路径)\n", IM_COL32(255, 120, 120, 255));
+        console.Append(i18n::Tr("[编译] 找不到 g++ 编译器 (设置 -> g++ 路径)\n"), IM_COL32(255, 120, 120, 255));
         return;
     }
 
     execution::Request runRequest;
-    runRequest.exe = exePath;runRequest.label="运行";runRequest.isolateWorkingDirectory=settings.isolatedRunDirectory&&settings.runDirectory.empty();
+    runRequest.exe = exePath;runRequest.label=i18n::Tr("运行");runRequest.isolateWorkingDirectory=settings.isolatedRunDirectory&&settings.runDirectory.empty();
     runRequest.cwd = settings.runDirectory.empty() ? dir : utils::U8ToW(settings.runDirectory);
     runRequest.limits.timeMs = (DWORD)std::clamp(settings.runTimeLimitMs, 100, 3600000);
     runRequest.limits.memoryBytes = (size_t)std::clamp(settings.runMemoryLimitMB, 0, 16384) * 1024 * 1024;
@@ -918,7 +915,7 @@ void App::StartCompileRun(BuildAction action) {
         int count = 0;
         std::wstring command = L"program " + utils::U8ToW(settings.runArguments);
         auto argv = CommandLineToArgvW(command.c_str(), &count);
-        if (!argv) { console.Append("[运行配置] 无法解析程序参数\n", IM_COL32(255,120,120,255)); return; }
+        if (!argv) { console.Append(i18n::Tr("[运行配置] 无法解析程序参数\n"), IM_COL32(255,120,120,255)); return; }
         for (int i = 1; i < count; ++i) runRequest.args.push_back(argv[i]);
         LocalFree(argv);
     }
@@ -930,7 +927,7 @@ void App::StartCompileRun(BuildAction action) {
         if (!line.empty()) {
             size_t equal = line.find('=');
             if (equal == std::string::npos || equal == 0) {
-                console.Append("[运行配置] 环境覆盖应每行填写 NAME=value\n", IM_COL32(255,120,120,255)); return;
+                console.Append(i18n::Tr("[运行配置] 环境覆盖应每行填写 NAME=value\n"), IM_COL32(255,120,120,255)); return;
             }
             runRequest.environment[utils::U8ToW(line.substr(0, equal))] = utils::U8ToW(line.substr(equal + 1));
         }
@@ -952,25 +949,25 @@ void App::StartCompileRun(BuildAction action) {
     std::wstring gdb=settings.gdbPath.empty() ? utils::DirName(gpp)+L"\\gdb.exe" : portable::Resolve(executableDir,utils::U8ToW(settings.gdbPath));
     std::wstring debugInput;
     if(action==BuildAction::Debug) {
-        if(GetFileAttributesW(gdb.c_str())==INVALID_FILE_ATTRIBUTES) { console.Append("[调试] 找不到 GDB，请在设置中指定路径\n",IM_COL32(255,120,120,255)); return; }
+        if(GetFileAttributesW(gdb.c_str())==INVALID_FILE_ATTRIBUTES) { console.Append(i18n::Tr("[调试] 找不到 GDB，请在设置中指定路径\n"),IM_COL32(255,120,120,255)); return; }
         debugInput=utils::U8ToW(settings.debugInputFile);
-        if(!debugInput.empty()&&GetFileAttributesW(debugInput.c_str())==INVALID_FILE_ATTRIBUTES) { console.Append("[调试] 输入文件不存在\n",IM_COL32(255,120,120,255)); return; }
+        if(!debugInput.empty()&&GetFileAttributesW(debugInput.c_str())==INVALID_FILE_ATTRIBUTES) { console.Append(i18n::Tr("[调试] 输入文件不存在\n"),IM_COL32(255,120,120,255)); return; }
     }
 
     if(action==BuildAction::Run) {
         if(procThread.joinable()) procThread.join();
         procBusy.store(true); killRequested.store(false);
         { std::lock_guard<std::mutex> lock(stdinMutex); stdinQueue.clear(); }
-        if(ed->m_dirty) console.Append("[运行] 使用上次编译的版本，当前编辑内容尚未编译\n",IM_COL32(255,190,60,255));
-        console.Append("[运行已编译程序] "+utils::WToU8(execution::CommandLine(exePath,runRequest.args))+"\n[运行目录] "+utils::WToU8(runRequest.cwd)+"\n",IM_COL32(140,200,255,255));
+        if(ed->m_dirty) console.Append(i18n::Tr("[运行] 使用上次编译的版本，当前编辑内容尚未编译\n"),IM_COL32(255,190,60,255));
+        console.Append(i18n::Tr("[运行已编译程序] ")+utils::WToU8(execution::CommandLine(exePath,runRequest.args))+i18n::Tr("\n[运行目录] ")+utils::WToU8(runRequest.cwd)+"\n",IM_COL32(140,200,255,255));
         procThread=std::thread([this,runRequest]() { RunInteractiveProc(runRequest); procBusy.store(false); });
         return;
     }
 
     console.Append("──────────────────────────────────────────\n", IM_COL32(120, 120, 130, 255));
-    console.Append("[编译] " + utils::WToU8(file) + "\n", IM_COL32(140, 180, 255, 255));
+    console.Append(i18n::Tr("[编译] ") + utils::WToU8(file) + "\n", IM_COL32(140, 180, 255, 255));
     procBusy.store(true);
-    SetProcStatus("编译中...");
+    SetProcStatus(i18n::Tr("编译中..."));
     runInteractive.store(false);
     killRequested.store(false);   // 清除上次「终止」请求
     { std::lock_guard<std::mutex> lk(stdinMutex); stdinQueue.clear(); }   // 丢弃上次残留输入
@@ -987,7 +984,7 @@ void App::StartCompileRun(BuildAction action) {
         std::vector<std::wstring> toks;
         ExpandTemplate(tpl, gpp, file, exePath, dir, toks);
         if (toks.empty()) {
-            console.Append("[编译] 命令行模板展开结果为空\n", IM_COL32(255, 120, 120, 255));
+            console.Append(i18n::Tr("[编译] 命令行模板展开结果为空\n"), IM_COL32(255, 120, 120, 255));
             procBusy.store(false);
             SetProcStatus("");
             return;
@@ -1012,7 +1009,7 @@ void App::StartCompileRun(BuildAction action) {
 
     const DWORD compileTimeout = (DWORD)std::clamp(settings.compileTimeLimitMs, 100, 3600000);
     const uint64_t compileRev = editRev;
-    console.Append("[命令] " + utils::WToU8(execution::CommandLine(exeCmd, runArgs)) + "\n[编译目录] " + utils::WToU8(dir) + "\n", IM_COL32(140,180,255,255));
+    console.Append(i18n::Tr("[命令] ") + utils::WToU8(execution::CommandLine(exeCmd, runArgs)) + i18n::Tr("\n[编译目录] ") + utils::WToU8(dir) + "\n", IM_COL32(140,180,255,255));
     const auto breakpoints=DebugBreakpoints();
     procThread = std::thread([this, exeCmd, runArgs, file, exePath, dir, runRequest, compileTimeout, compileRev, action, gdb, debugInput, breakpoints]() {
         std::vector<ProcOut> outs;
@@ -1026,14 +1023,14 @@ void App::StartCompileRun(BuildAction action) {
         std::wstring errF;
 
         auto r = utils::RunProcess(exeCmd, runArgs, dir, outF, errF, compileTimeout, true, &killRequested);
-        add("[任务] "+r.task.id+" [记录目录] "+utils::WToU8(r.task.directory)+"\n",IM_COL32(140,180,255,255));
-        add("[编译] " + std::string(execution::ReasonText(r.reason)) + "，耗时 " + std::to_string(r.elapsedMs) + " ms\n", IM_COL32(160,180,200,255));
+        add(i18n::Tr("[任务] ")+r.task.id+i18n::Tr(" [记录目录] ")+utils::WToU8(r.task.directory)+"\n",IM_COL32(140,180,255,255));
+        add(i18n::Tr("[编译] ") + std::string(execution::ReasonText(r.reason)) + i18n::Tr("，耗时 ") + std::to_string(r.elapsedMs) + " ms\n", IM_COL32(160,180,200,255));
         if (!r.out.empty()) add(r.out, IM_COL32(230,230,230,255));
         if (!r.ok) {
-            add("[编译] 无法启动编译器: " + r.error + "\n", IM_COL32(255, 120, 120, 255));
+            add(i18n::Tr("[编译] 无法启动编译器: ") + r.error + "\n", IM_COL32(255, 120, 120, 255));
             flush();
         } else if (r.exitCode != 0) {
-            add("[编译] 失败 (退出码 " + std::to_string(r.exitCode) + ")\n", IM_COL32(255, 120, 120, 255));
+            add(i18n::Tr("[编译] 失败 (退出码 ") + std::to_string(r.exitCode) + ")\n", IM_COL32(255, 120, 120, 255));
             add(r.err, IM_COL32(255, 120, 120, 255));
             if (!r.err.empty() && r.err.back() != '\n') add("\n", IM_COL32(255, 120, 120, 255));
             // 编译错误同步到诊断 (问题面板可点击跳转)
@@ -1042,7 +1039,7 @@ void App::StartCompileRun(BuildAction action) {
             flush();
         } else {
             if(GetFileAttributesW(exePath.c_str())==INVALID_FILE_ATTRIBUTES) {
-                add("[编译] 编译器返回成功，但没有生成目标 EXE\n",IM_COL32(255,120,120,255)); flush(); procBusy.store(false); return;
+                add(i18n::Tr("[编译] 编译器返回成功，但没有生成目标 EXE\n"),IM_COL32(255,120,120,255)); flush(); procBusy.store(false); return;
             }
             auto successfulDiags=ParseDiags(r.err,utils::WToU8(file));
             { std::lock_guard<std::mutex> lock(diagMutex); diagResults=std::move(successfulDiags); diagDoneRev=compileRev; diagAutomatic=false; }
@@ -1050,11 +1047,11 @@ void App::StartCompileRun(BuildAction action) {
                 lastArtifacts[file]=exePath;
                 nlohmann::json artifacts=nlohmann::json::object();
                 for(const auto& artifact:lastArtifacts) artifacts[utils::WToU8(artifact.first)]=utils::WToU8(artifact.second);
-                if(!utils::WriteFileU8(dataDir+L"\\build-artifacts.json",artifacts.dump(2))) add("[构建记录] 无法保存产物索引\n",IM_COL32(255,190,60,255));
+                if(!utils::WriteFileU8(dataDir+L"\\build-artifacts.json",artifacts.dump(2))) add(i18n::Tr("[构建记录] 无法保存产物索引\n"),IM_COL32(255,190,60,255));
             }
             if (!r.err.empty()) add(r.err, IM_COL32(255,220,120,255));
-            add("[编译] 成功\n\n", IM_COL32(140, 220, 150, 255));
-            add("[产物] " + utils::WToU8(exePath) + "\n\n", IM_COL32(140, 200, 255, 255));
+            add(i18n::Tr("[编译] 成功\n\n"), IM_COL32(140, 220, 150, 255));
+            add(i18n::Tr("[产物] ") + utils::WToU8(exePath) + "\n\n", IM_COL32(140, 200, 255, 255));
             if(action==BuildAction::Compile) { flush(); procBusy.store(false); return; }
             if(action==BuildAction::Debug) {
                 flush();
@@ -1062,15 +1059,15 @@ void App::StartCompileRun(BuildAction action) {
                 procBusy.store(false); return;
             }
             if (GetFileAttributesW(exePath.c_str()) == INVALID_FILE_ATTRIBUTES) {
-                add("[运行] exe 不存在\n", IM_COL32(255, 120, 120, 255));
+                add(i18n::Tr("[运行] exe 不存在\n"), IM_COL32(255, 120, 120, 255));
                 flush();
             } else {
                 flush();   // 编译信息先上屏, 随后进入交互运行
-                QueueProcOutput("[命令] " + utils::WToU8(execution::CommandLine(runRequest.exe, runRequest.args)) +
-                    "\n[运行目录] " + utils::WToU8(runRequest.cwd) + "\n[环境] 继承宿主，覆盖 " +
-                    std::to_string(runRequest.environment.size()) + " 项 (值在设置中查看，不写入日志)\n[限制] " +
-                    std::to_string(runRequest.limits.timeMs) + " ms，内存 " +
-                    std::to_string(runRequest.limits.memoryBytes / 1024 / 1024) + " MiB (0=不限制)，输出 " +
+                QueueProcOutput(i18n::Tr("[命令] ") + utils::WToU8(execution::CommandLine(runRequest.exe, runRequest.args)) +
+                    i18n::Tr("\n[运行目录] ") + utils::WToU8(runRequest.cwd) + i18n::Tr("\n[环境] 继承宿主，覆盖 ") +
+                    std::to_string(runRequest.environment.size()) + i18n::Tr(" 项 (值在设置中查看，不写入日志)\n[限制] ") +
+                    std::to_string(runRequest.limits.timeMs) + i18n::Tr(" ms，内存 ") +
+                    std::to_string(runRequest.limits.memoryBytes / 1024 / 1024) + i18n::Tr(" MiB (0=不限制)，输出 ") +
                     std::to_string(runRequest.limits.outputBytes / 1024 / 1024) + " MiB\n", IM_COL32(140,180,255,255), true);
                 RunInteractiveProc(runRequest);
             }
@@ -1120,10 +1117,10 @@ void App::PumpProcResults() {
                 if (!terminalRevealed) { terminalRevealed = true; showTerminal = true; focusTerminal = true; }
             } else console.Append(o.text, o.color);
         }
-    if (truncated) console.Append("[输出] 显示队列已满，部分内容已省略；执行总输出限制仍然生效。\n", IM_COL32(255,190,60,255));
+    if (truncated) console.Append(i18n::Tr("[输出] 显示队列已满，部分内容已省略；执行总输出限制仍然生效。\n"), IM_COL32(255,190,60,255));
     bool busy = procBusy.load();
     if (busy) { prevBusy = true; return; }        // 运行中, 状态文字由工作线程维护
-    if (!results.empty() || prevBusy) SetProcStatus("就绪");
+    if (!results.empty() || prevBusy) SetProcStatus(i18n::Tr("就绪"));
     prevBusy = false;
 }
 
@@ -1155,7 +1152,7 @@ void App::ApplyRecovery(bool restore) {
     int recoveredActive=-1;
     for(size_t i=0;restore&&i<recoverSnapshot.tabs.size();++i)if(i<recoverSelection.size()&&recoverSelection[i]){
         const auto& tab=recoverSnapshot.tabs[i];NewFile();auto* ed=ActiveEditor();
-        ed->SetText(tab.text);ed->m_name=tab.name+" [恢复副本]";ed->m_path.clear();
+        ed->SetText(tab.text);ed->m_name=tab.name+i18n::Tr(" [恢复副本]");ed->m_path.clear();
         ed->m_savedBaseline=tab.baseline;ed->m_dirty=true;ed->m_enc=tab.encoding;ed->RebuildLines();
         ed->m_cursor=tab.cursor;ed->m_selAnchor=tab.anchor;ed->m_selActive=tab.cursor!=tab.anchor;ed->m_scrollX=tab.scrollX;ed->m_scrollY=tab.scrollY;ed->m_breakpoints=tab.breakpoints;
         if(int(i)==recoverSnapshot.active)recoveredActive=active;
@@ -1175,8 +1172,8 @@ void App::SaveSettings() {
     settings.Normalize();
     if(settings.Save(settingsPath, portableMode ? executableDir : std::wstring())){
         ApplyTheme();
-        console.Append("[设置] 已保存到 " + utils::WToU8(settingsPath) + "\n", IM_COL32(140, 220, 150, 255));
-    }else console.Append("[设置] 保存失败，请检查设置目录的写入权限；当前会话的修改仍保留。\n",IM_COL32(240,100,80,255));
+        console.Append(i18n::Tr("[设置] 已保存到 ") + utils::WToU8(settingsPath) + "\n", IM_COL32(140, 220, 150, 255));
+    }else console.Append(i18n::Tr("[设置] 保存失败，请检查设置目录的写入权限；当前会话的修改仍保留。\n"),IM_COL32(240,100,80,255));
 }
 
 // ===================================================================
@@ -1250,7 +1247,7 @@ void App::StartCompilerSearch(const std::vector<std::wstring>& roots) {
     if(compilerScanBusy.load())return;
     if(compilerScanThread.joinable())compilerScanThread.join();
     compilerScanDone=false;compilerScanCancel=false;compilerScanBusy=true;
-    compilerScanMessage="正在递归扫描本机磁盘，可取消；已有配置保持不变。";
+    compilerScanMessage=i18n::Tr("正在递归扫描本机磁盘，可取消；已有配置保持不变。");
     compilerPickerOpen=true;
     compilerScanThread=std::thread([this,roots](){
         try {compilerScanResults=utils::FindGpps(roots.empty() ? utils::CompilerSearchRoots() : roots,&compilerScanCancel);}
@@ -1262,8 +1259,8 @@ void App::PumpCompilerSearch() {
     if(!compilerScanDone.exchange(false))return;
     if(compilerScanThread.joinable())compilerScanThread.join();
     compilerCandidates=std::move(compilerScanResults);
-    if(compilerScanCancel)compilerScanMessage="扫描已取消，下面是取消前找到的编译器。";
-    else compilerScanMessage=compilerCandidates.empty() ? "未找到 g++，可在设置中手动输入路径。" : "找到 "+std::to_string(compilerCandidates.size())+" 个 g++，请选择要使用的编译器。";
+    if(compilerScanCancel)compilerScanMessage=i18n::Tr("扫描已取消，下面是取消前找到的编译器。");
+    else compilerScanMessage=compilerCandidates.empty() ? i18n::Tr("未找到 g++，可在设置中手动输入路径。") : i18n::Tr("找到 ")+std::to_string(compilerCandidates.size())+i18n::Tr(" 个 g++，请选择要使用的编译器。");
     if(!compilerScanCancel && compilerCandidates.size()==1 && settings.gppPath.empty())
         SelectCompiler(compilerCandidates.front());
 }
@@ -1273,7 +1270,7 @@ bool App::SelectCompiler(const std::wstring& path) {
     settings.gppPath=utils::WToU8(path);
     if(!settingsPath.empty())settings.Save(settingsPath,portableMode ? executableDir : std::wstring());
     MarkDiag();
-    compilerScanMessage="已选择: "+settings.gppPath;
+    compilerScanMessage=i18n::Tr("已选择: ")+settings.gppPath;
     compilerPickerOpen=false;
     return true;
 }
@@ -1281,10 +1278,10 @@ void App::DrawCompilerPicker() {
     PumpCompilerSearch();
     if(!compilerPickerOpen)return;
     ImGui::SetNextWindowSize(ImVec2(720,380),ImGuiCond_FirstUseEver);
-    if(ImGui::Begin("选择 C++ 编译器",&compilerPickerOpen)) {
+    if(ImGui::Begin(i18n::Window("选择 C++ 编译器"),&compilerPickerOpen)) {
         ImGui::TextWrapped("%s",compilerScanMessage.c_str());
         if(compilerScanBusy) {
-            if(ImGui::Button("取消扫描"))compilerScanCancel=true;
+            if(ImGui::Button(i18n::Tr("取消扫描")))compilerScanCancel=true;
         } else {
             ImGui::BeginChild("compiler_candidates",ImVec2(0,-ImGui::GetFrameHeightWithSpacing()),ImGuiChildFlags_Borders,ImGuiWindowFlags_HorizontalScrollbar);
             for(const auto& path:compilerCandidates) {
@@ -1293,8 +1290,8 @@ void App::DrawCompilerPicker() {
                 if(ImGui::IsItemHovered())ImGui::SetTooltip("%s",label.c_str());
             }
             ImGui::EndChild();
-            if(ImGui::Button("重新扫描"))StartCompilerSearch();
-            ImGui::SameLine();if(ImGui::Button("关闭"))compilerPickerOpen=false;
+            if(ImGui::Button(i18n::Tr("重新扫描")))StartCompilerSearch();
+            ImGui::SameLine();if(ImGui::Button(i18n::Tr("关闭")))compilerPickerOpen=false;
         }
     }
     ImGui::End();
