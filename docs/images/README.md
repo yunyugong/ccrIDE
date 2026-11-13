@@ -1,6 +1,6 @@
 # README interface media
 
-These images show the actual OpenGL-rendered v0.3.7.2 UI from the existing Chinese and English UI verification runs. They were added to the README on 2026-11-13. The interface, code and data are demonstration states from the test preview.
+Workspace PNGs and their slideshow show the actual OpenGL-rendered v0.3.8 UI from the Chinese and English verification runs. Completion documentation and preferences examples retain the v0.3.7.2 verification images. Updated on 2026-11-13 after the v0.3.8 Release assets were verified. The interface, code and data are demonstration states from the test preview.
 
 - `workspace-zh.png` and `workspace-en.png`: main workspace, file tree, editor and bottom output panel.
 - `completion-zh.png`: lightweight completion with the optional documentation plugin enabled; the comment and declaration file come from the installed GCC headers.

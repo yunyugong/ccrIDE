@@ -4,13 +4,13 @@
 
 **面向竞赛编程与日常 C++ 练习的轻量 Windows IDE。** 打开一个 `.cpp` 文件，就能在同一个窗口中编辑、补全、编译运行和调试。离线安装包包含 GCC 与 GDB，适合从单文件程序开始使用。
 
-当前版本：**v0.3.7.2** · Windows x64 · 需要 OpenGL 3.3
+当前版本：**v0.3.8** · Windows x64 · 需要 OpenGL 3.3
 
-[下载安装包](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/ccrIDE-Setup-v0.3.7.2.exe) · [下载便携版](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/ccrIDE-v0.3.7.2-win64-with-GCC.zip) · [全部版本](https://github.com/yunyugong/ccrIDE/releases) · [插件接口](docs/plugin-api.md)
+[下载安装包](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.8/ccrIDE-Setup-v0.3.8.exe) · [下载便携版](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.8/ccrIDE-v0.3.8-win64-with-GCC.zip) · [全部版本](https://github.com/yunyugong/ccrIDE/releases) · [插件接口](docs/plugin-api.md)
 
-开发分支正在准备 **v0.3.8**：后台搜索、头文件索引、可取消下载和工具栏标签，详见 [改进说明](docs/responsiveness-0.3.8.md)。下方下载仍指向已公开的稳定版本。
+**v0.3.8 已发布**：后台搜索、头文件索引、可取消下载和工具栏标签，详见 [改进说明](docs/responsiveness-0.3.8.md)。
 
-![ccrIDE v0.3.7.2 中文深色主界面：左侧文件树、中央代码编辑器和底部输出面板](docs/images/workspace-zh.png)
+![ccrIDE v0.3.8 中文深色主界面：左侧文件树、中央代码编辑器和底部输出面板](docs/images/workspace-zh.png)
 
 ## 三步开始
 
@@ -29,7 +29,7 @@
 
 ## 界面预览
 
-以下为 v0.3.7.2 的实际渲染界面；点击静态图片可查看完整尺寸。
+主界面和语言对照来自 v0.3.8；补全注释与设置示例沿用 v0.3.7.2。全部为实际渲染截图，点击静态图片可查看完整尺寸。
 
 <details>
 <summary>查看代码补全与头文件注释</summary>
@@ -60,7 +60,7 @@ GIF 由两张真实界面截图轮播组成，用于对照中文与英文界面�
 
 ## 安装与使用
 
-Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查看进度和取消安装。便携 ZIP 提供相同的程序文件，解压后运行 `ccrIDE-v0.3.7.2.exe`。
+Windows x64 离线安装包内含 GCC 11.5 和 GDB，可选择安装目录、查看进度和取消安装。便携 ZIP 提供相同的程序文件，解压后运行 `ccrIDE-v0.3.8.exe`。
 
 源码与可用发布包见 [GitHub Releases](https://github.com/yunyugong/ccrIDE/releases)；自动生成的源码压缩包不含编译器或已编译程序。
 
@@ -95,9 +95,9 @@ AI 助手与补全注释已从主程序移出，分别安装、停用或卸载�
 
 | 插件包 | 功能 |
 |---|---|
-| `ai-assistant-v1.2.1.zip` | OpenAI 兼容接口、流式或非流式对话、多轮历史、附带选中代码和插入回复 |
-| `completion-docs-v1.0.1.zip` | 轻量补全的注释全文、声明文件与行号、多个头文件来源切换、可点击网址 |
-| `clangd-v1.2.1.zip` | 独立 clangd 服务、嵌套模板语义补全、实时诊断、定义跳转；离线包附带 clangd 23.1.0 |
+| `ai-assistant-v1.2.2.zip` | OpenAI 兼容接口、流式或非流式对话、多轮历史、附带选中代码和插入回复 |
+| `completion-docs-v1.0.2.zip` | 轻量补全的注释全文、声明文件与行号、多个头文件来源切换、可点击网址 |
+| `clangd-v1.2.2.zip` | 独立 clangd 服务、嵌套模板语义补全、实时诊断、定义跳转；离线包附带 clangd 23.1.0 |
 
 安装：在“插件 → 安装本地插件”中选择 ZIP，无需手动解压。AI 和注释插件需要 ccrIDE 0.3.0 或以上，使用插件 API v2。clangd 插件需要 ccrIDE 0.3.5 或以上，使用兼容扩展 API v3。
 

@@ -2,9 +2,9 @@
 
 完整发布说明和附件见 [GitHub Releases](https://github.com/yunyugong/ccrIDE/releases)。
 
-## v0.3.8（候选构建 / candidate build）
+## v0.3.8
 
-全局搜索与头文件模型移到后台，新增搜索取消与过期结果丢弃；插件下载使用可取消的独立工作进程；默认构建改为 Release；增加可保存的工具栏文字标签选项。保留轻量补全、现有快捷键和拖动停靠。实现与边界见 [后台工作说明](docs/responsiveness-0.3.8.md)。正式附件以 GitHub Releases 为准。
+全局搜索与头文件模型移到后台，新增搜索取消与过期结果丢弃；插件下载使用可取消的独立工作进程；默认构建改为 Release；增加可保存的工具栏文字标签选项。保留轻量补全、现有快捷键和拖动停靠。实现与边界见 [后台工作说明](docs/responsiveness-0.3.8.md)。正式附件见 [v0.3.8 Release](https://github.com/yunyugong/ccrIDE/releases/tag/v0.3.8)。
 
 Workspace search and header models run in the background. Marketplace downloads use a cancellable managed process. Release becomes the default build configuration, and toolbar text labels are configurable. Existing lightweight completion, shortcuts and draggable docking remain available.
 

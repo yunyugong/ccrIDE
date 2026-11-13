@@ -2,18 +2,18 @@
 
 [简体中文](README.md) | **English**
 
-A lightweight C++ IDE for **Windows x64**, focused on fast, single-file and competitive-programming workflows. Built with Dear ImGui, GLFW and OpenGL. Current version: **0.3.7.2**. The original prototype is preserved in `IDE.py`.
+A lightweight C++ IDE for **Windows x64**, focused on fast, single-file and competitive-programming workflows. Built with Dear ImGui, GLFW and OpenGL. Current version: **0.3.8**. The original prototype is preserved in `IDE.py`.
 
-[Download installer](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/ccrIDE-Setup-v0.3.7.2.exe) · [Download portable bundle](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/ccrIDE-v0.3.7.2-win64-with-GCC.zip) · [Plugin API](docs/plugin-api.md)
+[Download installer](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.8/ccrIDE-Setup-v0.3.8.exe) · [Download portable bundle](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.8/ccrIDE-v0.3.8-win64-with-GCC.zip) · [Plugin API](docs/plugin-api.md)
 
-The development branch is preparing **v0.3.8** with background search/header models, cancellable downloads and toolbar labels. See [implementation notes](docs/responsiveness-0.3.8.md). Download links below still point to the published stable release.
+**v0.3.8 is available** with background search/header models, cancellable downloads and toolbar labels. See [implementation notes](docs/responsiveness-0.3.8.md).
 
-![ccrIDE v0.3.7.2 English workspace with file tree, code editor and output panel](docs/images/workspace-en.png)
+![ccrIDE v0.3.8 English workspace with file tree, code editor and output panel](docs/images/workspace-en.png)
 
 <details>
 <summary>Compare the Chinese and English interfaces</summary>
 
-This GIF is a slideshow of two actual v0.3.7.2 interface screenshots, rather than a recording of mouse actions. Switching languages preserves docked panel positions.
+This GIF is a slideshow of two actual v0.3.8 interface screenshots, rather than a recording of mouse actions. Switching languages preserves docked panel positions.
 
 ![Chinese and English workspace screenshot comparison](docs/images/interface-languages.gif)
 
@@ -23,8 +23,8 @@ This GIF is a slideshow of two actual v0.3.7.2 interface screenshots, rather tha
 
 Get release packages from [GitHub Releases](https://github.com/yunyugong/ccrIDE/releases).
 
-- `ccrIDE-Setup-v0.3.7.2.exe`: native offline installer with a selectable installation directory.
-- `ccrIDE-v0.3.7.2-win64-with-GCC.zip`: portable bundle; extract the entire folder, then run `ccrIDE-v0.3.7.2.exe`.
+- `ccrIDE-Setup-v0.3.8.exe`: native offline installer with a selectable installation directory.
+- `ccrIDE-v0.3.8-win64-with-GCC.zip`: portable bundle; extract the entire folder, then run `ccrIDE-v0.3.8.exe`.
 - Both include GCC 11.5 and GDB. Keep the whole directory together; settings are in `data/`, plugins in `plugins/`, and the compiler in `toolchain/mingw64/`.
 - Install into a **new, writable folder** when upgrading to preserve your previous version/settings. OpenGL 3.3 is required. English UI works without Chinese fonts; displaying Chinese source text still needs a suitable font.
 - Matching `.sha256` files accompany the downloads. GitHub's automatically generated source archives do not include the compiler or a prebuilt application.
@@ -60,9 +60,9 @@ Install ZIPs through **Plugins > Install Local Plugin**, or refresh the online P
 
 | Package | Purpose |
 | --- | --- |
-| `ai-assistant-v1.2.1.zip` | AI Assistant using your OpenAI-compatible endpoint; configure your own endpoint/key/model. |
-| `completion-docs-v1.0.1.zip` | Full completion comments, declaration sources, multiple-header selection and clickable links. |
-| `clangd-v1.2.1.zip` | Compiler-based C++ completion, diagnostics, definition and rename; offline package includes clangd 23.1.0. |
+| `ai-assistant-v1.2.2.zip` | AI Assistant using your OpenAI-compatible endpoint; configure your own endpoint/key/model. |
+| `completion-docs-v1.0.2.zip` | Full completion comments, declaration sources, multiple-header selection and clickable links. |
+| `clangd-v1.2.2.zip` | Compiler-based C++ completion, diagnostics, definition and rename; offline package includes clangd 23.1.0. |
 
 Updated packages follow the host language. Older compatible plugin binaries still load, but retain their original UI language. Source comments, user code and external tool messages are preserved, rather than machine-translated.
 
