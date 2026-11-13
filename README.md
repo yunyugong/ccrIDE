@@ -2,23 +2,59 @@
 
 **简体中文** | [English](README.en.md)
 
-轻量 C++ IDE，使用 Dear ImGui、GLFW 和 OpenGL。当前版本：**0.3.7.2**。
+**面向竞赛编程与日常 C++ 练习的轻量 Windows IDE。** 打开一个 `.cpp` 文件，就能在同一个窗口中编辑、补全、编译运行和调试。离线安装包包含 GCC 与 GDB，适合从单文件程序开始使用。
 
-0.3.7.2 新增跟随系统 / 简体中文 / English 语言选项、双语安装程序、GitHub ZIP 插件市场与社区地址 JSON 配置。语言切换立即生效，点击保存设置后保留。新增 [插件接口文档](docs/plugin-api.md)、[GitHub 托管与翻译贡献说明](docs/community.md) 和 [社区贡献指南](CONTRIBUTING.md)。
+当前版本：**v0.3.7.2** · Windows x64 · 需要 OpenGL 3.3
 
-0.3.7.1 新增 25 项编辑与界面偏好、设置搜索、快捷预设、偏好导入导出及恢复默认。界面字号与编辑器字号独立，旧配置沿用兼容默认值。详见 [自定义设置](docs/customization.md)。
+[下载安装包](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/ccrIDE-Setup-v0.3.7.2.exe) · [下载便携版](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/ccrIDE-v0.3.7.2-win64-with-GCC.zip) · [全部版本](https://github.com/yunyugong/ccrIDE/releases) · [插件接口](docs/plugin-api.md)
 
-0.3.7 新增统一任务 ID、独立运行与临时目录，以及跨实例并发限制；从“运行 → 任务管理”查看和取消任务。使用方法及限制见 [任务调度](docs/task-coordinator.md)。AI 与 clangd 插件请使用 1.2.0 版。
+![ccrIDE v0.3.7.2 中文深色主界面：左侧文件树、中央代码编辑器和底部输出面板](docs/images/workspace-zh.png)
 
-0.3.6 修复恢复备份轮换、测试归档一致性，并收紧 DLL 依赖查找与重复 ID 检查。详情见 [0.3.6 修复记录](docs/reliability-0.3.6.md)。
+## 三步开始
 
-0.3.5 新增多光标/列编辑、clangd 语义重命名预览、样例/Subtask/对拍和所有标签恢复。用法、验证范围及限制见 [工作流说明](docs/workflows.md)。
+1. **安装或解压**：下载安装程序，或完整解压便携 ZIP 到可写目录；升级时选择新目录，保留旧设置。
+2. **打开代码**：新建或打开 `.cpp` 文件并保存。按 **F10** 编译，按 **F11** 编译并运行，按 **F12** 运行上次成功编译的程序。
+3. **查看结果**：在底部“终端”输入数据，回车发送；从“问题”面板跳转编译错误。需要调试时，Ctrl+点击行号设置断点，再按 **F5**。
 
-定位为轻量、单文件优先的开发环境。高级调试、测试框架集成、大型项目管理仍不完整；重型模板元编程可能超出轻量补全模型的能力。详见 [架构核对与验收边界](docs/architecture-review.md)。
+界面语言可在“设置 → 外观与颜色 → 语言”中切换，点击“保存设置”后保留。普通代码补全内置；AI 助手、补全注释和 clangd 可按需安装。
 
-提供代码补全、语法高亮、多文件编辑、独立编译与运行，以及基础 GDB 调试。最初原型保留在 `IDE.py`，当前产品名为 ccrIDE。
+## 适合怎样的工作流
 
-[总体需求](docs/product-requirements.md) · [实施计划](docs/implementation-plan.md) · [执行管理与验证边界](docs/execution-manager.md)
+- **写一个程序就运行**：编辑、构建、交互输入和基础 GDB 调试集中在同一工作区。
+- **练习与竞赛验证**：管理样例、Subtask 分组，或用生成器与参考解对拍，保留失败归档。
+- **按自己的习惯编辑**：拖动和停靠面板，调整快捷键、缩进、字体、配色和补全行为。
+- **逐步扩展**：默认使用轻量补全；需要复杂 C++ 语义分析时接入 clangd，通过独立插件添加 AI 或注释详情。
+
+## 界面预览
+
+以下为 v0.3.7.2 的实际渲染界面；点击静态图片可查看完整尺寸。
+
+<details>
+<summary>查看代码补全与头文件注释</summary>
+
+普通补全显示符号和类型；安装补全注释插件后，可阅读声明注释、查看头文件来源并打开其中的网址。
+
+![代码补全列表与声明注释，包含头文件来源和可点击链接](docs/images/completion-zh.png)
+
+</details>
+
+<details>
+<summary>查看语言、外观与编辑器设置</summary>
+
+语言、编辑器与界面字号、行距、配色等可分别调整；设置页支持搜索、偏好导入导出和恢复默认。
+
+![ccrIDE 设置页：语言选项、字体、界面疏密、圆角和行号设置](docs/images/preferences-zh.png)
+
+</details>
+
+<details>
+<summary>查看中英文界面对照 GIF</summary>
+
+GIF 由两张真实界面截图轮播组成，用于对照中文与英文界面；它不是鼠标操作录屏。切换语言时保留面板的停靠位置。
+
+![ccrIDE 中文与英文主界面截图轮播](docs/images/interface-languages.gif)
+
+</details>
 
 ## 安装与使用
 
@@ -164,9 +200,10 @@ API v2 导出 `Plugin_OnLoadV2`、`Plugin_OnFrame` 和 `Plugin_OnUnload`。加�
 - 调试输入目前使用设置中指定的文件；普通运行支持交互输入。修改源码后需重启调试。
 - 样例/Subtask/对拍已提供首版工作流；交互题、自定义检查器与自动缩减反例尚未实现。
 
-## v0.3.1 修复
+## 文档与社区
 
-- 本地插件在目标盘暂存，修复跨盘安装失败。
-- 线上安装保留接口版本；下载和写入成功后再完成安装，失败清理临时文件。
-- 插件加载失败可查看具体原因；缺少入口的 DLL 立即释放。
-- 继续兼容 v0.3.0 的两个独立插件。
+[使用与功能说明](docs/workflows.md) · [自定义设置](docs/customization.md) · [任务管理](docs/task-coordinator.md) · [插件接口](docs/plugin-api.md) · [GitHub 托管与 JSON 配置](docs/community.md) · [参与贡献](CONTRIBUTING.md)
+
+[版本记录](CHANGELOG.md) · [总体需求](docs/product-requirements.md) · [实施计划](docs/implementation-plan.md) · [架构与验收边界](docs/architecture-review.md)
+
+ccrIDE 使用 Dear ImGui、GLFW 和 OpenGL 构建，最初原型保留在 `IDE.py`。目前以轻量、单文件工作流为主；高级调试、通用测试框架集成和大型项目管理仍不完整，具体限制见上方“已知边界”。

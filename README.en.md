@@ -4,6 +4,19 @@
 
 A lightweight C++ IDE for **Windows x64**, focused on fast, single-file and competitive-programming workflows. Built with Dear ImGui, GLFW and OpenGL. Current version: **0.3.7.2**. The original prototype is preserved in `IDE.py`.
 
+[Download installer](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/ccrIDE-Setup-v0.3.7.2.exe) · [Download portable bundle](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/ccrIDE-v0.3.7.2-win64-with-GCC.zip) · [Plugin API](docs/plugin-api.md)
+
+![ccrIDE v0.3.7.2 English workspace with file tree, code editor and output panel](docs/images/workspace-en.png)
+
+<details>
+<summary>Compare the Chinese and English interfaces</summary>
+
+This GIF is a slideshow of two actual v0.3.7.2 interface screenshots, rather than a recording of mouse actions. Switching languages preserves docked panel positions.
+
+![Chinese and English workspace screenshot comparison](docs/images/interface-languages.gif)
+
+</details>
+
 ## Download and install
 
 Get release packages from [GitHub Releases](https://github.com/yunyugong/ccrIDE/releases).

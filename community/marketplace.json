@@ -4,37 +4,37 @@
     {
       "id": "ai-assistant",
       "name": "AI Assistant",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": "ccrIDE",
       "description": "Independent AI coding assistant with custom endpoints, streaming chat and selected-code context",
       "entry": "ai-assistant.dll",
       "apiVersion": 2,
       "taskCoordinatorVersion": 1,
-      "packageUrl": "https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.1/ai-assistant-v1.2.0.zip",
-      "sha256": "6e87f093e974876ceb9603602ccc9f2f8d5d294f09c4e3ecc73f3b75ab2fa469"
+      "packageUrl": "https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/ai-assistant-v1.2.1.zip",
+      "sha256": "f4a47f8fb14a25253717d08aa70982ed0944c756e92499b24bcf412796b7cbbc"
     },
     {
       "id": "clangd",
       "name": "clangd Language Service",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": "ccrIDE",
       "description": "C++ semantic completion, diagnostics and definitions in a separate service, with lightweight fallback",
       "entry": "clangd.dll",
       "apiVersion": 3,
       "taskCoordinatorVersion": 1,
-      "packageUrl": "https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.1/clangd-v1.2.0.zip",
-      "sha256": "3e71704098d0066c238394f518f853b9175ab48579fe657bb7a312785cf38963"
+      "packageUrl": "https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/clangd-v1.2.1.zip",
+      "sha256": "958eb6d01a561d6e44f5edb595e9fd20363e6da914b4c4edfafc70dd24bab447"
     },
     {
       "id": "completion-docs",
       "name": "Completion Documentation",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "ccrIDE",
       "description": "Full completion comments, declaration sources and clickable links",
       "entry": "completion-docs.dll",
       "apiVersion": 2,
-      "packageUrl": "https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.1/completion-docs-v1.0.0.zip",
-      "sha256": "8e99315a653f85898bb75abed4fa1b7ce15a08ea3a48fbc22db0e13943f6f89a"
+      "packageUrl": "https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/completion-docs-v1.0.1.zip",
+      "sha256": "e101c5395553cbf592883441520e73311bf36dd9d97e559adfa8ce12770ef924"
     }
   ]
 }
