@@ -55,6 +55,8 @@ public:
     std::mutex  m_resMtx;
     std::deque<NetMsg> m_msgs;
     std::atomic<bool> m_netBusy{false};
+    std::atomic<bool> m_netCancel{false};
+    void CancelNetwork(){m_netCancel.store(true);}
 
     // 扫描 E:\cPP\plugins\*\plugin.json 并加载 DLL
     void ScanAndLoad();
@@ -66,7 +68,7 @@ public:
     void DrawCompletionDetails(CodeEditor& editor);
     void DrawCommands();
     void SetDockTargets(unsigned int left,unsigned int bottom,unsigned int right);
-    bool InstallLocalArchive(const std::wstring& archive,std::string& error,const MarketItem* expected=nullptr,bool activate=true);
+    bool InstallLocalArchive(const std::wstring& archive,std::string& error,const MarketItem* expected=nullptr,bool activate=true,std::atomic<bool>* cancel=nullptr);
     void CallFrames();       // 每帧在主循环调用
 
     // 硬编译插件 (kind=hard) 入口由主程序编译时静态链接, 注册查找函数供扫描匹配

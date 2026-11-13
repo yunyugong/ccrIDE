@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "plugins": [
+    {
+      "id": "ai-assistant",
+      "name": "AI Assistant",
+      "version": "1.2.2",
+      "author": "ccrIDE",
+      "description": "Independent AI coding assistant with custom endpoints, streaming chat and selected-code context",
+      "entry": "ai-assistant.dll",
+      "apiVersion": 2,
+      "taskCoordinatorVersion": 1,
+      "packageUrl": "https://github.com/yunyugong/ccrIDE/releases/download/v0.3.8/ai-assistant-v1.2.2.zip",
+      "sha256": "9f7be651cd87054f0e0142e7679ac9e90510b0002707504265544d336230974c"
+    },
+    {
+      "id": "clangd",
+      "name": "clangd Language Service",
+      "version": "1.2.2",
+      "author": "ccrIDE",
+      "description": "C++ semantic completion, diagnostics and definitions in a separate service, with lightweight fallback",
+      "entry": "clangd.dll",
+      "apiVersion": 3,
+      "taskCoordinatorVersion": 1,
+      "packageUrl": "https://github.com/yunyugong/ccrIDE/releases/download/v0.3.8/clangd-v1.2.2.zip",
+      "sha256": "17737b84396d074713b453beb3bd856fda0dd51e3e80ac4061d7fd9fe4d06e15"
+    },
+    {
+      "id": "completion-docs",
+      "name": "Completion Documentation",
+      "version": "1.0.2",
+      "author": "ccrIDE",
+      "description": "Full completion comments, declaration sources and clickable links",
+      "entry": "completion-docs.dll",
+      "apiVersion": 2,
+      "packageUrl": "https://github.com/yunyugong/ccrIDE/releases/download/v0.3.8/completion-docs-v1.0.2.zip",
+      "sha256": "e33fb5b55fc2d5c6d6da0841a24fb1f3a3f7b8b7ea2bbdb30a38b0dfba2720f7"
+    }
+  ]
+}

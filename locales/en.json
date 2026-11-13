@@ -909,6 +909,16 @@
     "DLL 的 PE 文件头被截断": "Truncated DLL PE header",
     "文件不是有效的 DLL": "File is not a valid DLL",
     "插件需要 Windows x64 DLL": "Plugin requires a Windows x64 DLL",
-    "DLL 的可选文件头无效": "Invalid DLL optional header"
+    "DLL 的可选文件头无效": "Invalid DLL optional header",
+    "取消搜索": "Cancel search",
+    "正在搜索": "Searching",
+    "搜索完成": "Search complete",
+    " 个文件，": " files, ",
+    "（已取消）": " (cancelled)",
+    "（已达结果上限）": " (result limit reached)",
+    "取消下载": "Cancel download",
+    "工具栏显示文字标签（窄窗口自动收起）": "Toolbar text labels (collapse in narrow windows)",
+    "正在索引头文件…": "Indexing headers…",
+    "取消索引": "Cancel indexing"
   }
 }

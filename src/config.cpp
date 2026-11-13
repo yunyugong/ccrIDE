@@ -47,6 +47,7 @@ template<class S,class F> void VisitPreferences(S& s,F visit) {
     visit("scrollbarSize",s.scrollbarSize);
     visit("recoveryIntervalSec",s.recoveryIntervalSec);
     visit("showToolbar",s.showToolbar);
+    visit("toolbarLabels",s.toolbarLabels);
     visit("showStatusBar",s.showStatusBar);
     visit("showActivityBar",s.showActivityBar);
 }

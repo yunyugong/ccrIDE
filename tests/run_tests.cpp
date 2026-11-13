@@ -1,3 +1,6 @@
+#include "market_download.h"
+#include "workspace_search.h"
+#include "background_index.h"
 #include <fstream>
 #include <windows.h>
 #include <tlhelp32.h>
@@ -555,6 +558,7 @@ static void TestCustomization(){
     prefs.gppPath="PRIVATE_COMPILER";prefs.runEnvironment="PRIVATE_KEY=secret";
     CHECK(prefs.Save((root/"settings.json").wstring()));
     CHECK(!prefs.Save((root/"missing/settings.json").wstring()));
+    prefs.toolbarLabels=false;CHECK(prefs.Save((root/"settings.json").wstring()));
     Settings loaded;CHECK(loaded.Load((root/"settings.json").wstring()));
     CHECK(loaded.tabWidth==2&&!loaded.insertSpaces&&!loaded.autoIndent&&!loaded.autoCloseBrackets);
     CHECK(!loaded.autoCompletion&&loaded.completionMinChars==3&&loaded.completionRows==14&&loaded.completionWidth==900);
@@ -562,12 +566,13 @@ static void TestCustomization(){
     CHECK(!loaded.showLineNumbers&&loaded.relativeLineNumbers&&!loaded.highlightCurrentLine&&!loaded.highlightWordOccurrences);
     CHECK(!loaded.showChangeMarkers&&!loaded.caretBlink&&loaded.uiFontSize==20&&loaded.uiDensity==2);
     CHECK(loaded.cornerRadius==9&&loaded.scrollbarSize==18&&loaded.recoveryIntervalSec==20);
-    CHECK(!loaded.showToolbar&&!loaded.showStatusBar&&!loaded.showActivityBar);
+    CHECK(!loaded.showToolbar&&!loaded.showStatusBar&&!loaded.showActivityBar&&!loaded.toolbarLabels);
     CHECK(prefs.ExportPreferences(file,error));std::string text;CHECK(utils::ReadFileU8(file,text));
     CHECK(text.find("PRIVATE_")==std::string::npos&&text.find("secret")==std::string::npos);
-    auto exported=nlohmann::json::parse(text);CHECK(exported["preferences"].size()==38);
+    auto exported=nlohmann::json::parse(text);CHECK(exported["preferences"].size()==39);
     Settings imported;imported.gppPath="keep-toolchain";imported.runEnvironment="KEEP=value";imported.runTimeLimitMs=1234;
     imported.disabledPlugins={"keep-plugin"};CHECK(imported.ImportPreferences(file,error));
+    CHECK(!imported.toolbarLabels);
     CHECK(imported.tabWidth==2&&imported.hotkeys==prefs.hotkeys&&imported.editorColors==prefs.editorColors);
     CHECK(imported.gppPath=="keep-toolchain"&&imported.runEnvironment=="KEEP=value"&&imported.runTimeLimitMs==1234);
     CHECK(imported.disabledPlugins==std::vector<std::string>{"keep-plugin"});
@@ -1433,18 +1438,18 @@ static int CheckLocalPluginArchives(const std::filesystem::path& archives,const 
     auto finish=[&]() {g_app.plugins.UnloadAll();ImGui::DestroyContext();std::error_code e;fs::remove_all(root,e);};
     CHECK(!g_app.plugins.HasCompletionProvider());
     std::string error;
-    CHECK(g_app.plugins.InstallLocalArchive((archives/"completion-docs-v1.0.1.zip").wstring(),error));
+    CHECK(g_app.plugins.InstallLocalArchive((archives/"completion-docs-v1.0.2.zip").wstring(),error));
     CHECK(g_app.plugins.HasCompletionProvider());
     g_app.settings.disabledPlugins.push_back("completion-docs");g_app.plugins.ReloadAll();CHECK(!g_app.plugins.HasCompletionProvider());
     CodeEditor editor;editor.SetText("// plugin comment\nint pluginCount;\nvoid f(){ pluginCou");editor.RebuildLines();editor.m_cursor=editor.m_text.size();editor.OpenCompletion();
     CHECK(!editor.m_compItems.empty());for(auto& item:editor.m_compItems)CHECK(item.doc.empty());
     g_app.settings.disabledPlugins.clear();g_app.plugins.ReloadAll();CHECK(g_app.plugins.HasCompletionProvider());
-    auto aiArchive=archives/"ai-assistant-v1.2.1.zip";
+    auto aiArchive=archives/"ai-assistant-v1.2.2.zip";
     CHECK(g_app.plugins.InstallLocalArchive(aiArchive.wstring(),error));
     CHECK(fs::is_regular_file(root/"plugins/ai-assistant/ai-service.exe"));
     bool aiLoaded=false;for(auto& plugin:g_app.plugins.plugins)if(plugin.id=="ai-assistant" && plugin.loaded)aiLoaded=true;CHECK(aiLoaded);
     CHECK(fs::is_regular_file(root/"data/plugins/ai-assistant/settings.json"));
-    CHECK(!g_app.plugins.InstallLocalArchive((archives/"completion-docs-v1.0.1.zip").wstring(),error));
+    CHECK(!g_app.plugins.InstallLocalArchive((archives/"completion-docs-v1.0.2.zip").wstring(),error));
     CHECK(g_app.plugins.Uninstall("completion-docs",error));CHECK(!g_app.plugins.HasCompletionProvider());CHECK(!fs::exists(root/"plugins/completion-docs"));
     CHECK(g_app.plugins.Uninstall("ai-assistant",error));CHECK(g_app.plugins.plugins.empty());
     finish();std::printf("Local plugin packages: %d passed, %d failed\n",g_pass,g_fail);return g_fail?1:0;
@@ -1456,13 +1461,14 @@ static int CheckRemotePluginInstall(const std::string& url) {
     fs::create_directories(root);
     g_app.pluginDir=(root/"plugins").wstring();
     ImGui::CreateContext();
+    auto waitNetwork=[&]{auto start=GetTickCount64();while(g_app.plugins.m_netBusy.load()&&GetTickCount64()-start<15000)Sleep(10);CHECK(!g_app.plugins.m_netBusy.load());if(g_app.plugins.m_worker.joinable())g_app.plugins.m_worker.join();};
     MarketItem item;item.id="remote-docs";item.name="Remote documentation";item.entry="completion-docs.dll";item.apiVersion=2;item.dllUrl=url+"/plugin.dll";std::string digest,error;CHECK(utils::HttpGet(url+"/digest",digest,error));item.sha256=digest;
-    g_app.plugins.RequestInstall(item);g_app.plugins.Shutdown();g_app.plugins.PumpNetResults();
+    g_app.plugins.RequestInstall(item);waitNetwork();g_app.plugins.PumpNetResults();
     std::string manifest;CHECK(utils::ReadFileU8((root/"plugins/remote-docs/plugin.json").wstring(),manifest));
     auto j=nlohmann::json::parse(manifest);CHECK(j.value("apiVersion",0)==2);
     g_app.plugins.ScanAndLoad();CHECK(g_app.plugins.HasCompletionProvider());
     CHECK(g_app.plugins.plugins.size()==1 && g_app.plugins.plugins[0].loaded);
-    g_app.plugins.RequestInstall(item);g_app.plugins.Shutdown();
+    g_app.plugins.RequestInstall(item);waitNetwork();
     CHECK(g_app.plugins.m_msgs.size()==1 && g_app.plugins.m_msgs.front().kind==NetKind::InstallFail);
     g_app.plugins.PumpNetResults();
     for(auto id:{"../escape","CON","bad/name","x:ads"}) {
@@ -1485,18 +1491,32 @@ static int CheckRemotePluginInstall(const std::string& url) {
     CHECK(g_app.plugins.plugins.size()==1 && !g_app.plugins.plugins[0].loaded && !g_app.plugins.plugins[0].loadError.empty());
     g_app.plugins.UnloadAll();
     auto oldMarket=g_app.settings.marketUrl;g_app.settings.marketUrl=url+"/catalog.json";
-    g_app.plugins.RequestFetchRemote();g_app.plugins.Shutdown();g_app.plugins.PumpNetResults();
+    g_app.plugins.RequestFetchRemote();waitNetwork();g_app.plugins.PumpNetResults();
     auto found=std::find_if(g_app.plugins.catalog.begin(),g_app.plugins.catalog.end(),[](const MarketItem& x){return x.id=="zip-docs";});
     CHECK(found!=g_app.plugins.catalog.end());
     if(found!=g_app.plugins.catalog.end()){
-        MarketItem zip=*found;g_app.plugins.RequestInstall(zip);g_app.plugins.Shutdown();g_app.plugins.PumpNetResults();
+        MarketItem zip=*found;g_app.plugins.RequestInstall(zip);waitNetwork();g_app.plugins.PumpNetResults();
         CHECK(fs::is_regular_file(root/"plugins/zip-docs/completion-docs.dll"));
         g_app.plugins.ScanAndLoad();CHECK(g_app.plugins.HasCompletionProvider());g_app.plugins.UnloadAll();
-        zip.id="manifest-mismatch";g_app.plugins.RequestInstall(zip);g_app.plugins.Shutdown();CHECK(g_app.plugins.m_msgs.front().kind==NetKind::InstallFail);g_app.plugins.PumpNetResults();CHECK(!fs::exists(root/"plugins/manifest-mismatch"));
-        zip.id="bad-checksum";zip.sha256=std::string(64,'0');g_app.plugins.RequestInstall(zip);g_app.plugins.Shutdown();CHECK(g_app.plugins.m_msgs.front().kind==NetKind::InstallFail);g_app.plugins.PumpNetResults();CHECK(!fs::exists(root/"plugins/bad-checksum"));
+        zip.id="manifest-mismatch";g_app.plugins.RequestInstall(zip);waitNetwork();CHECK(g_app.plugins.m_msgs.front().kind==NetKind::InstallFail);g_app.plugins.PumpNetResults();CHECK(!fs::exists(root/"plugins/manifest-mismatch"));
+        zip.id="bad-checksum";zip.sha256=std::string(64,'0');g_app.plugins.RequestInstall(zip);waitNetwork();CHECK(g_app.plugins.m_msgs.front().kind==NetKind::InstallFail);g_app.plugins.PumpNetResults();CHECK(!fs::exists(root/"plugins/bad-checksum"));
     }
     std::string body;CHECK(!utils::HttpGet(url+"/plugin.dll",body,error,{},16));CHECK(body.empty());
     CHECK(!utils::HttpGet(url+"/truncated",body,error));CHECK(body.empty());
+    for(auto endpoint:{"/stall-headers","/stall-body"}){
+        g_app.settings.marketUrl=url+endpoint;g_app.plugins.RequestFetchRemote();
+        bool started=false;auto until=GetTickCount64();
+        while(GetTickCount64()-until<5000){std::string active;CHECK(utils::HttpGet(url+"/started"+endpoint,active,error));if(active=="yes"){started=true;break;}Sleep(10);}
+        CHECK(started);auto cancelledAt=GetTickCount64();
+        if(std::string(endpoint)=="/stall-body")g_app.plugins.Shutdown();else {g_app.plugins.CancelNetwork();waitNetwork();}
+        CHECK(GetTickCount64()-cancelledAt<2000);CHECK(!g_app.plugins.m_netBusy.load());
+        g_app.plugins.PumpNetResults();CHECK(!g_app.plugins.lastMarketError.empty());
+        for(auto& task:execution::ListTasks())if(task.ownerPid==GetCurrentProcessId()&&task.label=="Plugin download"){
+            CHECK(!task.active);CHECK(!fs::exists(fs::path(task.task.directory)/"response.bin"));
+        }
+    }
+    // Starting again after a cancellation resets only the new transfer's token.
+    g_app.settings.marketUrl=url+"/catalog.json";g_app.plugins.RequestFetchRemote();waitNetwork();g_app.plugins.PumpNetResults();CHECK(g_app.plugins.lastMarketError.empty());
     g_app.settings.marketUrl=oldMarket;
     CHECK(std::distance(fs::directory_iterator(root/"plugins"),fs::directory_iterator{})==2);
     ImGui::DestroyContext();fs::remove_all(root);
@@ -1538,7 +1558,63 @@ static int CheckClangdArchive(const std::filesystem::path& archive,const std::ws
     std::printf("Installed clangd integration: %d passed, %d failed\n",g_pass,g_fail);return g_fail?1:0;
 }
 
+
+static void TestBackgroundWorkspace(){
+ namespace fs=std::filesystem;
+ auto root=fs::temp_directory_path()/(L"ccride-background-"+std::to_wstring(GetCurrentProcessId()));
+ fs::create_directories(root/"src");fs::create_directories(root/"build");fs::create_directories(root/"excluded");
+ utils::WriteFileU8((root/"src/main.cpp").wstring(),"cin\nCIN\ncinder\ncin value\n");
+ utils::WriteFileU8((root/"build/generated.cpp").wstring(),"cin\n");
+ utils::WriteFileU8((root/"excluded/secret.cpp").wstring(),"cin\n");
+ utils::WriteFileU8((root/"src/binary.txt").wstring(),std::string("cin\0bad",7));
+ workspace::Search search;
+ auto wait=[&]{auto start=GetTickCount64();while(search.Snapshot().running&&GetTickCount64()-start<5000)Sleep(5);CHECK(!search.Snapshot().running);return search.Snapshot();};
+ workspace::SearchQuery query{root.wstring(),"cin",true,true,{(root/"excluded").wstring()}};
+ search.Start(query);auto result=wait();CHECK(result.error.empty());CHECK(result.hits.size()==2);
+ query.caseSensitive=false;search.Start(query);result=wait();CHECK(result.hits.size()==3);
+ // New requests supersede old requests without joining on the UI thread.
+ query.needle="cin";search.Start(query);query.needle="no-such-symbol";search.Start(query);result=wait();CHECK(result.hits.empty());
+ query.needle="cin";search.Start(query);search.Clear();Sleep(20);CHECK(search.Snapshot().hits.empty());CHECK(!search.Snapshot().running);
+ search.Start(query);search.Cancel();result=wait();CHECK(result.cancelled);
+ std::string many;for(int i=0;i<4100;++i)many+="needle\n";utils::WriteFileU8((root/"src/many.cpp").wstring(),many);
+ query.needle="needle";search.Start(query);result=wait();CHECK(result.hits.size()==4000);CHECK(result.truncated);
+ std::string longLine="needle ";for(int i=0;i<1200;++i)longLine+="\xc3\xa9";
+ utils::WriteFileU8((root/"src/long.cpp").wstring(),longLine);query.needle="needle ";query.wholeWord=false;
+ search.Start(query);result=wait();CHECK(result.hits.size()==1);if(!result.hits.empty()){CHECK(result.hits[0].text.size()<=1024);CHECK(utils::IsValidUtf8(result.hits[0].text));}
+ auto originalDirectory=query.directory;query.directory=(root/"excluded").wstring();query.needle="cin";
+ search.Start(query);result=wait();CHECK(result.hits.empty());CHECK(result.files==0);query.directory=originalDirectory;
+ search.Stop();
+ // A real compiler query and header parse run without sharing live editor state.
+ auto& index=background::Index::I();index.Enable();
+ utils::WriteFileU8((root/"src/model.hpp").wstring(),"// local header\nstruct HeaderBox { int member; };\n");
+ std::string oldText="#include \"model.hpp\"\nstruct OldDocument {};\n";
+ std::string newText="#include \"model.hpp\"\nstruct NewDocument {};\n";
+ auto compiler=utils::U8ToW(g_app.settings.gppPath);auto path=(root/"src/main.cpp").wstring();
+ CHECK(!index.Headers(90001,1,oldText,path,compiler));CHECK(!index.Headers(90001,2,newText,path,compiler));
+ std::shared_ptr<background::HeaderResult> header;auto start=GetTickCount64();
+ while(!header&&GetTickCount64()-start<10000){Sleep(10);header=index.Headers(90001,2,newText,path,compiler);}
+ CHECK(bool(header));
+ if(header){CHECK(header->signature==2);CHECK(header->model.FindType("NewDocument")!=nullptr);CHECK(header->model.FindType("OldDocument")==nullptr);
+     size_t pos=0;CHECK(header->model.FindMemberDeclPos("HeaderBox","member",pos));std::wstring file;int line=0;
+     CHECK(header->unit.Locate(pos,file,line));CHECK(fs::path(file).filename()==L"model.hpp");CHECK(line==2);
+ }
+ std::vector<std::wstring> dirs;CHECK(index.Directories(compiler,dirs));CHECK(!dirs.empty());
+ SymbolIndex bounded(compiler,nullptr);bounded.SetIncludeDirs(dirs);
+ CHECK(bounded.BuildHeaderUnit(std::string(1024,'x'),path,32).text.size()==32);
+ // Verify real editor integration keeps a pending popup alive and refreshes it.
+ CodeEditor ed;ed.m_path=path;ed.SetText(newText+"void f(){HeaderBox box; box.}");ed.RebuildLines();ed.m_cursor=ed.m_text.find("box.")+4;
+ ed.OpenCompletion();CHECK(ed.m_headerPending);CHECK(ed.m_compOpen);
+ start=GetTickCount64();while(ed.m_headerPending&&GetTickCount64()-start<10000){Sleep(10);ed.EnsureHeaderModel();}
+ ed.UpdateCompletion();bool member=false;for(auto& item:ed.m_compItems)if(item.label=="member")member=true;CHECK(member);
+ // A new document revision must not reuse the preceding translation unit.
+ ed.SetText("#include \"model.hpp\"\nstruct ChangedDocument {};\n");ed.EnsureHeaderModel();CHECK(ed.m_headerPending);
+ start=GetTickCount64();while(ed.m_headerPending&&GetTickCount64()-start<10000){Sleep(10);ed.EnsureHeaderModel();}
+ CHECK(ed.m_hdr.FindType("ChangedDocument")!=nullptr);CHECK(ed.m_hdr.FindType("NewDocument")==nullptr);
+ index.Stop();fs::remove_all(root);
+}
+
 int main(int argc, char** argv) {
+    int downloadResult=marketdownload::WorkerMain();if(downloadResult>=0)return downloadResult;
     if(argc==4 && std::string(argv[1])=="--clangd-check") {
         int count=0;auto wide=CommandLineToArgvW(GetCommandLineW(),&count);
         if(!wide || count!=4){if(wide)LocalFree(wide);return 2;}
@@ -1595,6 +1671,7 @@ int main(int argc, char** argv) {
     TestEditorDecorationsAndColors();
     TestNamespaceAndExactCompletion();
     TestQualifiedStreamCompletion();
+    TestBackgroundWorkspace();
     TestManagedCompileRun();
     std::printf("通过 %d 项, 失败 %d 项\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;

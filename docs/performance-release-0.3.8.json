@@ -1,0 +1,78 @@
+{
+  "measuredAt": "2026-11-13T14:39:39.774067+00:00",
+  "environment": {
+    "os": "Windows-10-10.0.22631-SP0",
+    "cpu": "AMD Ryzen 5 7500F 6-Core Processor",
+    "compiler": "GCC 11.5.0",
+    "plugins": []
+  },
+  "workload": "Identical tests/core_benchmark.cpp: SetText + RebuildLines + CodeModel Ensure; 7 samples per size",
+  "limits": [
+    "Synthetic warm core operations only",
+    "Historical version and build flags both differ; no source-only attribution",
+    "Maximum observation is not a statistically established p95",
+    "Excludes cold startup, UI latency, filesystem search and clangd"
+  ],
+  "builds": {
+    "0.3.5-unoptimized": {
+      "exeSha256": "af32b6ad70f10f4e1a3bfad5c2c40a388f9e90a49f04c078ddc2e5299217b1f5",
+      "cxxFlags": "-std=gnu++17",
+      "measurements": [
+        {
+          "bytes": 100008,
+          "samples": 7,
+          "medianMs": 6.9074,
+          "peakWorkingSetBytes": 10420224,
+          "privateBytes": 1835008,
+          "maximumMs": 7.9084
+        },
+        {
+          "bytes": 1000008,
+          "samples": 7,
+          "medianMs": 64.1526,
+          "peakWorkingSetBytes": 29007872,
+          "privateBytes": 3792896,
+          "maximumMs": 67.3746
+        },
+        {
+          "bytes": 4000032,
+          "samples": 7,
+          "medianMs": 255.865,
+          "peakWorkingSetBytes": 92991488,
+          "privateBytes": 8175616,
+          "maximumMs": 295.069
+        }
+      ]
+    },
+    "0.3.8-Release": {
+      "exeSha256": "d74a2c7a96cf057dd5a928dac428e4fe69807bbf9e3fdfe3d85e1be97079d9b1",
+      "cxxFlags": "-O3 -DNDEBUG -std=gnu++17",
+      "measurements": [
+        {
+          "bytes": 100008,
+          "samples": 7,
+          "medianMs": 2.8741,
+          "peakWorkingSetBytes": 9904128,
+          "privateBytes": 1839104,
+          "maximumMs": 3.4675
+        },
+        {
+          "bytes": 1000008,
+          "samples": 7,
+          "medianMs": 25.4973,
+          "peakWorkingSetBytes": 28356608,
+          "privateBytes": 3796992,
+          "maximumMs": 27.5242
+        },
+        {
+          "bytes": 4000032,
+          "samples": 7,
+          "medianMs": 104.455,
+          "peakWorkingSetBytes": 92434432,
+          "privateBytes": 8179712,
+          "maximumMs": 108.548
+        }
+      ]
+    }
+  }
+}

@@ -1,6 +1,7 @@
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
-import sys,threading,subprocess,hashlib,io,zipfile,json
+import sys,threading,subprocess,hashlib,io,zipfile,json,time
+started=set()
 blob=Path(sys.argv[2]).read_bytes()
 payload=io.BytesIO()
 with zipfile.ZipFile(payload,'w',zipfile.ZIP_DEFLATED) as z:
@@ -9,6 +10,14 @@ with zipfile.ZipFile(payload,'w',zipfile.ZIP_DEFLATED) as z:
 archive=payload.getvalue()
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path.startswith('/started/'):
+            data=b'yes' if self.path[len('/started'):] in started else b'no'
+            self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
+        if self.path in ('/stall-headers','/stall-body'):
+            started.add(self.path)
+            if self.path=='/stall-body':
+                self.send_response(200);self.send_header('Content-Length','100000');self.end_headers();self.wfile.write(b'{');self.wfile.flush()
+            time.sleep(8);self.close_connection=True;return
         if self.path=='/digest':data=hashlib.sha256(blob).hexdigest().encode()
         elif self.path=='/plugin.zip':data=archive
         elif self.path=='/catalog.json':data=json.dumps({'schema':1,'plugins':[{'id':'zip-docs','name':'ZIP docs','version':'1.0','entry':'completion-docs.dll','apiVersion':2,'packageUrl':f'http://127.0.0.1:{self.server.server_port}/plugin.zip','sha256':hashlib.sha256(archive).hexdigest()}]}).encode()

@@ -23,6 +23,8 @@
 
 CMAKE_CXX_COMPILER 可指定 g++.exe。切换编译器使用新构建目录。原有显式目录参数继续有效，切换依赖版本也建议使用新目录。
 
+默认使用 Release（GCC `-O3 -DNDEBUG`），避免空 BuildType 产生未优化的发布程序。需要调试 IDE 本身时，配置 `-DCMAKE_BUILD_TYPE=Debug`，或传入 `build.ps1 -BuildType Debug`。显式选择的构建类型会被保留。
+
 build.ps1 委托同一套 CMake，支持 -Compiler、-Dependencies、-ImGuiDirectory、-GlfwDirectory、-JsonDirectory、-BuildDirectory 和 -Test，不再维护固定路径或手写链接命令。
 
 主程序发布到 build/releases。内置插件清单默认写入 build/releases/plugins，对应开发版可执行文件旁的 plugins/。原来开发目录的插件需复制过来，旧目录不会被删除。便携包目录规则保持不变。

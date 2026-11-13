@@ -3,6 +3,9 @@
 #include "language_host.h"
 #include "contest.h"
 #include "toolbar_icons.h"
+#include "workspace_search.h"
+#include "market_download.h"
+#include "background_index.h"
 #include "version.h"
 // ============================================================
 //  ccrIDE - C++ IDE (ImGui + GLFW + OpenGL)
@@ -48,6 +51,7 @@ static void DrawWorkspaceToolbar();
 static void DrawWorkspaceDock();
 static void DrawDebuggerWindow();
 static bool g_resetWorkspace = false;
+static workspace::Search g_workspaceSearch;
 static ShellIcons g_shellIcons;
 static void DrawProblemsWindow();
 static void DrawActivityBar();
@@ -60,6 +64,9 @@ static void DefaultBottomDock() {
 static std::string g_iniPath;   // imgui.ini 的持久存储
 
 int main() {
+    int downloadResult=marketdownload::WorkerMain();
+    if(downloadResult>=0)return downloadResult;
+    background::Index::I().Enable();
     HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (!g_app.Init()) return 1;
 
@@ -182,6 +189,8 @@ int main() {
         glfwSwapBuffers(window);
     }
 
+    g_workspaceSearch.Stop();
+    background::Index::I().Stop();
     g_app.SaveSession();        // 保存会话 (标签列表 + 光标位置)
     g_app.Shutdown();           // 等待编译/AI 后台线程结束
     g_app.plugins.UnloadAll();
@@ -481,7 +490,12 @@ static void DrawWorkspaceToolbar() {
     if (ImGui::BeginViewportSideBar("##workspace_toolbar", vp, ImGuiDir_Up, std::max(42.0f,ImGui::GetFrameHeight()+14.0f),
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings)) {
         using toolbar::Icon;
-        const bool narrow = vp->Size.x < 1000;
+        float labeledWidth=560;
+        for(auto entry:std::vector<std::pair<const char*,const char*>>{{"编译","compile"},{"编译运行","run"},{"运行","runOnly"}})
+            labeledWidth+=ImGui::CalcTextSize((std::string(i18n::Tr(entry.first))+"  "+HotkeyText(entry.second)).c_str()).x+42;
+        for(auto text:{"新建","打开","保存","调试","停止"})labeledWidth+=ImGui::CalcTextSize(i18n::Tr(text)).x+36;
+        const bool narrow=vp->Size.x<std::max(1000.0f,labeledWidth);
+        const bool labels=g_app.settings.toolbarLabels&&!narrow;
         CodeEditor* ed = g_app.ActiveEditor();
         const bool busy = g_app.procBusy.load() || g_app.debugger.Snapshot().active;
         auto tip = [&](const char* name, const char* action) { return std::string(name) + "  " + HotkeyText(action); };
@@ -489,10 +503,10 @@ static void DrawWorkspaceToolbar() {
             ImGui::AlignTextToFramePadding();
             ImGui::TextColored(g_app.settings.theme=="light" ? ImVec4(0.16f,0.39f,0.72f,1) : ImVec4(0.48f,0.70f,1,1), "ccrIDE"); ImGui::SameLine(0,20);
         }
-        if (toolbar::Button("##new", Icon::NewFile, tip(i18n::Tr("新建文件"), "new").c_str())) g_app.NewFile();
-        if (toolbar::Button("##open", Icon::Open, tip(i18n::Tr("打开文件"), "open").c_str())) g_app.OpenFileDialog();
+        if (toolbar::Button("##new", Icon::NewFile, tip(i18n::Tr("新建文件"), "new").c_str(),false,labels?i18n::Tr("新建"):nullptr)) g_app.NewFile();
+        if (toolbar::Button("##open", Icon::Open, tip(i18n::Tr("打开文件"), "open").c_str(),false,labels?i18n::Tr("打开"):nullptr)) g_app.OpenFileDialog();
         ImGui::BeginDisabled(!ed);
-        if (toolbar::Button("##save", Icon::Save, tip(i18n::Tr("保存"), "save").c_str())) g_app.SaveActive(false);
+        if (toolbar::Button("##save", Icon::Save, tip(i18n::Tr("保存"), "save").c_str(),false,labels?i18n::Tr("保存"):nullptr)) g_app.SaveActive(false);
         ImGui::EndDisabled();
         if (!narrow) {
             toolbar::Separator();
@@ -536,15 +550,16 @@ static void DrawWorkspaceToolbar() {
 
         ImGui::SameLine(0,12);
         auto action = [&](const char* id, Icon icon, const char* text, const char* actionName, bool primary=false) {
-            std::string caption = narrow ? std::string() : std::string(text) + "  " + HotkeyText(actionName);
-            if(primary && narrow) caption = text;
+            std::string caption = !labels ? std::string() : std::string(text) + "  " + HotkeyText(actionName);
+            if(primary && !labels) caption = text;
+            float height=std::max(28.0f,ImGui::GetFontSize()+10);
             float width = caption.empty() ? 28 : ImGui::CalcTextSize(caption.c_str()).x + 38;
             ImGui::PushStyleColor(ImGuiCol_Button, primary ? ImVec4(0.16f,0.43f,0.32f,1) : ImVec4(0,0,0,0));
             if(primary) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.93f,1,0.96f,1));
-            bool clicked=ImGui::Button(id,ImVec2(width,28));
+            bool clicked=ImGui::Button(id,ImVec2(width,height));
             ImVec2 pos=ImGui::GetItemRectMin();
-            toolbar::DrawIcon(icon,ImVec2(pos.x+6,pos.y+6),ImGui::GetColorU32(ImGuiCol_Text));
-            if(!caption.empty()) ImGui::GetWindowDrawList()->AddText(ImVec2(pos.x+29,pos.y+(28-ImGui::GetFontSize())/2),ImGui::GetColorU32(ImGuiCol_Text),caption.c_str());
+            toolbar::DrawIcon(icon,ImVec2(pos.x+6,pos.y+(height-16)/2),ImGui::GetColorU32(ImGuiCol_Text));
+            if(!caption.empty()) ImGui::GetWindowDrawList()->AddText(ImVec2(pos.x+29,pos.y+(height-ImGui::GetFontSize())/2),ImGui::GetColorU32(ImGuiCol_Text),caption.c_str());
             if(primary) ImGui::PopStyleColor();
             ImGui::PopStyleColor();
             if(ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s",tip(text,actionName).c_str());
@@ -554,10 +569,10 @@ static void DrawWorkspaceToolbar() {
         if(action("##compile",Icon::Build,i18n::Tr("编译"),"compile")) { g_app.showConsole=true; g_app.StartCompileRun(BuildAction::Compile); ImGui::SetWindowFocus(i18n::Window("输出")); }
         if(action("##run",Icon::Run,i18n::Tr("编译运行"),"run",true)) { g_app.showConsole=true; g_app.StartCompileRun(); }
         if(action("##runOnly",Icon::Run,i18n::Tr("运行"),"runOnly")) g_app.StartCompileRun(BuildAction::Run);
-        if(toolbar::Button("##debug",Icon::Debug,tip(i18n::Tr("开始调试"),"debug").c_str())) { g_app.showDebug=true; g_app.StartCompileRun(BuildAction::Debug); }
+        if(toolbar::Button("##debug",Icon::Debug,tip(i18n::Tr("开始调试"),"debug").c_str(),false,labels?i18n::Tr("调试"):nullptr)) { g_app.showDebug=true; g_app.StartCompileRun(BuildAction::Debug); }
         ImGui::EndDisabled();
         ImGui::BeginDisabled(!busy);
-        if(toolbar::Button("##stop",Icon::Stop,i18n::Tr("停止当前任务"))) { g_app.killRequested.store(true); g_app.debugger.Stop(); }
+        if(toolbar::Button("##stop",Icon::Stop,i18n::Tr("停止当前任务"),false,labels?i18n::Tr("停止"):nullptr)) { g_app.killRequested.store(true); g_app.debugger.Stop(); }
         ImGui::EndDisabled();
     }
     ImGui::End(); ImGui::PopStyleVar(3);
@@ -724,11 +739,16 @@ static void DrawStatusBar() {
         CodeEditor* ed = g_app.ActiveEditor();
         const bool busy = g_app.procBusy.load();
         std::string status = busy ? g_app.GetProcStatus() : g_app.diagStatus.empty() ? i18n::Tr("就绪") : g_app.diagStatus;
+        if(!busy&&ed&&ed->m_headerPending)status=i18n::Tr("正在索引头文件…");
         int errors = 0, warnings = 0;
         for (auto& d : g_app.activeDiags) { if (d.isErr) ++errors; else ++warnings; }
         if (errors) ImGui::TextColored(ImVec4(0.95f,0.44f,0.43f,1), i18n::Tr("%d 个错误"), errors);
         else if (warnings) ImGui::TextColored(ImVec4(0.90f,0.69f,0.32f,1), i18n::Tr("%d 个警告"), warnings);
         else ImGui::TextDisabled("%s", status.c_str());
+        if(ed && ed->m_headerPending && !busy && vp->Size.x>600){
+            ImGui::SameLine();
+            if(ImGui::SmallButton(i18n::Tr("取消索引"))){background::Index::I().Cancel(ed->m_uid);ed->m_headerPending=false;ed->CloseCompletion();}
+        }
         if (ed) {
             float right = 230;
             if (vp->Size.x > 800 && ed->HasPath() && ImGui::CalcTextSize(ed->m_name.c_str()).x < vp->Size.x - 450) {
@@ -1006,6 +1026,7 @@ static void DrawSettingsWindow() {
     SettingsCheckbox(i18n::Tr("光标闪烁"),&g_app.settings.caretBlink);
     ImGui::SeparatorText(i18n::Tr("工作区"));
     SettingsCheckbox(i18n::Tr("显示顶部工具栏"),&g_app.settings.showToolbar);
+    SettingsCheckbox(i18n::Tr("工具栏显示文字标签（窄窗口自动收起）"),&g_app.settings.toolbarLabels);
     SettingsCheckbox(i18n::Tr("显示底部状态栏"),&g_app.settings.showStatusBar);
     SettingsCheckbox(i18n::Tr("显示左侧活动栏"),&g_app.settings.showActivityBar);
     DrawEditorAppearanceSettings();
@@ -1240,12 +1261,14 @@ static void DrawAboutWindow() {
 // ---------------- 全局查找 ----------------
 namespace fs = std::filesystem;
 static void DrawSearchWindow() {
-    struct Hit { std::string file; int line; std::string text; };
     static std::string dir, kw;
     static bool cs = false, wholeWord = false;
-    static std::vector<Hit> hits;
-    static bool truncated = false, searched = false;
-    static std::string status;
+    static bool searched = false;
+    static workspace::SearchSnapshot snapshot;
+    static uint64_t seen=~uint64_t(0);
+    g_workspaceSearch.Poll(snapshot,seen);
+    auto& hits=snapshot.hits;
+    std::string status;
 
     if (!ImGui::Begin(i18n::Window("全局查找"), &g_app.showSearch)) { ImGui::End(); return; }
 
@@ -1269,103 +1292,20 @@ static void DrawSearchWindow() {
     ImGui::SameLine();
     if (ImGui::Button(i18n::Tr("搜索"))) doSearch = true;
     ImGui::SameLine();
-    if (ImGui::Button(i18n::Tr("清空结果"))) { hits.clear(); searched = false; status.clear(); }
+    if (ImGui::Button(i18n::Tr("清空结果"))) { g_workspaceSearch.Clear(); snapshot={}; searched=false; }
+    if(snapshot.running){ImGui::SameLine();if(ImGui::Button(i18n::Tr("取消搜索")))g_workspaceSearch.Cancel();}
     ImGui::TextDisabled(i18n::Tr("递归文本文件(≤2MB), 自动跳过隐藏/构建目录; 最多 4000 条结果"));
 
-    if (doSearch) {
-        hits.clear();
-        truncated = false;
-        searched = true;
-        status.clear();
-        std::wstring wdir = utils::U8ToW(dir);
-        if (!kw.empty() && GetFileAttributesW(wdir.c_str()) != INVALID_FILE_ATTRIBUTES) {
-            auto lower = [](std::string s) {
-                for (auto& c : s) c = (char)tolower((unsigned char)c);
-                return s;
-            };
-            std::string needle = cs ? kw : lower(kw);
-            auto textFile = [](const std::wstring& fn) {
-                const wchar_t* exts[] = { L".cpp", L".cc", L".cxx", L".c", L".h", L".hpp", L".hh",
-                                          L".txt", L".md", L".json", L".ini", L".cfg", L".log",
-                                          L".xml", L".html", L".css", L".js", L".ts", L".py",
-                                          L".csv", L".cmake", L".mk", L".bat", L".ps1" };
-                size_t d = fn.find_last_of(L'.');
-                std::wstring e = (d == std::wstring::npos) ? L"" : fn.substr(d);
-                for (auto x : exts) if (_wcsicmp(e.c_str(), x) == 0) return true;
-                return false;
-            };
-            auto match = [&](const std::string& line) {
-                std::string probe = cs ? line : lower(line);
-                size_t pos = 0;
-                while ((pos = probe.find(needle, pos)) != std::string::npos) {
-                    if (!wholeWord) return true;
-                    auto isw = [](unsigned char c) { return isalnum(c) || c == '_'; };
-                    bool lb = (pos == 0) || !isw((unsigned char)probe[pos - 1]);
-                    size_t end = pos + needle.size();
-                    bool rb = (end >= probe.size()) || !isw((unsigned char)probe[end]);
-                    if (lb && rb) return true;
-                    pos += needle.size();
-                }
-                return false;
-            };
-
-            const int MAX_HITS = 4000;
-            const size_t MAX_FILE = 2ull * 1024 * 1024;
-            // 忽略目录
-            auto skipDir = [](const std::wstring& n) {
-                const wchar_t* sk[] = { L"build", L".git", L".svn", L"node_modules", L"bin", L"obj", L".vs", L"backup" };
-                for (auto s : sk) if (_wcsicmp(n.c_str(), s) == 0) return true;
-                return false;
-            };
-
-            std::vector<fs::path> pending; pending.push_back(wdir);
-            while (!pending.empty() && (int)hits.size() < MAX_HITS) {
-                fs::path p = pending.back(); pending.pop_back();
-                std::error_code ec;
-                if (!fs::exists(p, ec)) continue;
-                if (fs::is_directory(p, ec)) {
-                    if (skipDir(p.filename().wstring())) continue;
-                    if (p == g_app.backupDir || p == g_app.dataDir) continue;   // 跳过 IDE 数据目录
-                    std::vector<fs::path> entries;
-                    for (fs::directory_iterator it(p, fs::directory_options::skip_permission_denied, ec), end;
-                         it != end; it.increment(ec)) {
-                        if (ec) break;
-                        entries.push_back(it->path());
-                    }
-                    // 目录优先, 且按名称排序保证可读性
-                    std::stable_sort(entries.begin(), entries.end(), [](const fs::path& a, const fs::path& b) {
-                        bool da = fs::is_directory(a), db = fs::is_directory(b);
-                        if (da != db) return da;
-                        return a.filename().wstring() < b.filename().wstring();
-                    });
-                    for (auto it = entries.rbegin(); it != entries.rend(); ++it) pending.push_back(*it);
-                } else {
-                    std::wstring fn = p.filename().wstring();
-                    if (!textFile(fn)) continue;
-                    unsigned long long sz = utils::FileSize(p.wstring());
-                    if (sz == 0 || sz > MAX_FILE) continue;
-                    std::string content;
-                    if (!utils::ReadFileU8(p.wstring(), content)) continue;
-                    if (content.find('\0') != std::string::npos) continue;   // 二进制
-                    std::string fileU8 = utils::WToU8(p.wstring());
-                    size_t start = 0, lineno = 1;
-                    while (start <= content.size() && (int)hits.size() < MAX_HITS) {
-                        size_t nl = content.find('\n', start);
-                        std::string line = content.substr(start, (nl == std::string::npos ? content.size() : nl) - start);
-                        if (match(line)) hits.push_back({ fileU8, (int)lineno, line });
-                        if (nl == std::string::npos) break;
-                        start = nl + 1;
-                        lineno++;
-                    }
-                }
-            }
-            truncated = ((int)hits.size() >= MAX_HITS);
-            status = i18n::Tr("共 ") + std::to_string(hits.size()) + i18n::Tr(" 处结果") + (truncated ? i18n::Tr(" (已达上限, 已截断)") : "");
-        } else if (kw.empty()) {
-            status = i18n::Tr("请输入搜索内容");
-        } else {
-            status = i18n::Tr("目录不存在: ") + dir;
-        }
+    if(doSearch){
+        searched=true;
+        g_workspaceSearch.Start({utils::U8ToW(dir),kw,cs,wholeWord,{g_app.backupDir,g_app.dataDir}});
+        snapshot=g_workspaceSearch.Snapshot();
+    }
+    if(searched){
+        status=std::string(i18n::Tr(snapshot.running?"正在搜索":"搜索完成"))+"  "+std::to_string(snapshot.files)+i18n::Tr(" 个文件，")+std::to_string(hits.size())+i18n::Tr(" 处结果");
+        if(snapshot.cancelled)status+=i18n::Tr("（已取消）");
+        if(snapshot.truncated)status+=i18n::Tr("（已达结果上限）");
+        if(!snapshot.error.empty())status+="  "+(snapshot.error=="Empty search text"?std::string(i18n::Tr("请输入搜索内容")):snapshot.error=="Search directory does not exist"?std::string(i18n::Tr("目录不存在: "))+dir:snapshot.error);
     }
 
     if (!status.empty())
@@ -1377,7 +1317,7 @@ static void DrawSearchWindow() {
     if (ImGui::BeginChild("##gsearch", avail, false,
                           ImGuiWindowFlags_HorizontalScrollbar)) {
         if (hits.empty()) {
-            if (searched) ImGui::TextDisabled(i18n::Tr("没有匹配"));
+            if (searched && !snapshot.running) ImGui::TextDisabled(i18n::Tr("没有匹配"));
             else ImGui::TextDisabled(i18n::Tr("在上方输入关键字后点 [搜索]"));
         }
         for (int i = 0; i < (int)hits.size(); i++) {
@@ -1385,7 +1325,7 @@ static void DrawSearchWindow() {
             // 只显示文件名 + 行号, 悬停显示完整路径
             std::string base = utils::WToU8(utils::FileBase(utils::U8ToW(h.file)));
             std::string label = "(" + std::to_string(h.line) + ")  " + base + "  |  " + h.text;
-            if (label.size() > 500) label.resize(500);
+            if (label.size() > 500) {size_t cut=500;while(cut && ((unsigned char)label[cut]&0xc0)==0x80)--cut;label.resize(cut);}
             ImGui::PushID(i);
             if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick)) {
                 if (ImGui::IsMouseDoubleClicked(0) || hits.size() < 200) {   // 少量结果单击即跳

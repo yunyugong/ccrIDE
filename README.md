@@ -8,6 +8,8 @@
 
 [下载安装包](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/ccrIDE-Setup-v0.3.7.2.exe) · [下载便携版](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/ccrIDE-v0.3.7.2-win64-with-GCC.zip) · [全部版本](https://github.com/yunyugong/ccrIDE/releases) · [插件接口](docs/plugin-api.md)
 
+开发分支正在准备 **v0.3.8**：后台搜索、头文件索引、可取消下载和工具栏标签，详见 [改进说明](docs/responsiveness-0.3.8.md)。下方下载仍指向已公开的稳定版本。
+
 ![ccrIDE v0.3.7.2 中文深色主界面：左侧文件树、中央代码编辑器和底部输出面板](docs/images/workspace-zh.png)
 
 ## 三步开始

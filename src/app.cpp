@@ -1,3 +1,4 @@
+#include "background_index.h"
 #include "i18n.h"
 #include "community.h"
 #include "contest.h"
@@ -574,6 +575,7 @@ void App::CloseEditor(int idx) {
 // 因此 active > idx 必须减 1 (原实现会跳到后一个标签)
 void App::RemoveEditorAt(int idx) {
     if (idx < 0 || idx >= (int)editors.size()) return;
+    background::Index::I().Cancel(editors[idx]->m_uid);
     editors.erase(editors.begin() + idx);
     if (editors.empty()) { active = -1; NewFile(); return; }
     if (active > idx) --active;
@@ -1128,6 +1130,8 @@ void App::PumpProcResults() {
 //  退出: 等待后台线程结束 (线程持有 this / 引用全局, 不可在运行中销毁)
 // ===================================================================
 void App::Shutdown() {
+    killRequested.store(true);shuttingDown.store(true);compilerScanCancel=true;
+    plugins.CancelNetwork();background::Index::I().Stop();
     contest::Shutdown();
     compilerScanCancel=true;
     if(compilerScanThread.joinable())compilerScanThread.join();

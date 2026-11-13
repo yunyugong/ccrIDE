@@ -1,3 +1,4 @@
+#include "market_download.h"
 #include "i18n.h"
 #include "plugin_manager.h"
 #include "app.h"
@@ -287,14 +288,16 @@ void PluginManager::RequestFetchRemote() {
     }
     std::string url = g_app.settings.marketUrl;   // 值拷贝, 线程内不读共享设置
     if (m_worker.joinable()) m_worker.join();
+    m_netCancel.store(false);
     m_worker = std::thread([this, url]() {
         std::string body, err;
-        if (!utils::HttpGet(url, body, err,{},2u<<20)) {
+        if (!marketdownload::Fetch(url, body, err,2u<<20,m_netCancel)) {
             PushMsg(NetKind::FetchErr, err);
         } else {
             try {
                 auto items=community::ParseMarket(body);
-                if (items.empty()) PushMsg(NetKind::FetchErr, i18n::Tr("线上市场返回空列表"));
+                if(m_netCancel.load())PushMsg(NetKind::FetchErr,"Download cancelled");
+                else if (items.empty()) PushMsg(NetKind::FetchErr, i18n::Tr("线上市场返回空列表"));
                 else PushMsg(NetKind::FetchOk, "", std::move(items));
             } catch (...) {
                 PushMsg(NetKind::FetchErr, i18n::Tr("线上市场 JSON 解析失败"));
@@ -314,13 +317,14 @@ void PluginManager::RequestInstall(const MarketItem& it) {
     MarketItem copy=it;
     fs::path root=PluginRoot();
     if (m_worker.joinable()) m_worker.join();
+    m_netCancel.store(false);
     m_worker=std::thread([this,copy,root]() {
         fs::path staging;bool owned=false;
         try {
             fs::path target=root/fs::u8path(copy.id);
             if(fs::exists(target))throw std::runtime_error(i18n::Tr("该插件已存在，请先卸载旧版"));
             std::string dllData,error;
-            if(!utils::HttpGet(copy.packageUrl.empty()?copy.dllUrl:copy.packageUrl,dllData,error,{},64u<<20))throw std::runtime_error(i18n::Tr("下载失败: ")+error);
+            if(!marketdownload::Fetch(copy.packageUrl.empty()?copy.dllUrl:copy.packageUrl,dllData,error,64u<<20,m_netCancel))throw std::runtime_error(i18n::Tr("下载失败: ")+error);
             if(!copy.sha256.empty()) {
                 std::string expected=copy.sha256;
                 for(auto& c:expected)c=(char)tolower((unsigned char)c);
@@ -333,7 +337,7 @@ void PluginManager::RequestInstall(const MarketItem& it) {
                 if(!owned)throw std::runtime_error(i18n::Tr("无法创建插件临时目录"));
                 auto archive=staging/L"package.zip";
                 if(!utils::WriteFileU8(archive.wstring(),dllData))throw std::runtime_error("Cannot write downloaded plugin ZIP");
-                if(!InstallLocalArchive(archive.wstring(),error,&copy,false))throw std::runtime_error(error);
+                if(!InstallLocalArchive(archive.wstring(),error,&copy,false,&m_netCancel))throw std::runtime_error(error);
                 packagezip::RemoveStagingTree(staging);owned=false;
                 PushMsg(NetKind::InstallOk,copy.name);m_netBusy.store(false);return;
             }
@@ -346,6 +350,7 @@ void PluginManager::RequestInstall(const MarketItem& it) {
                 {"taskCoordinatorVersion",copy.taskCoordinatorVersion},{"apiVersion",copy.apiVersion},{"kind","soft"},{"bundled",false}};
             if(!utils::WriteFileU8((staging/L"plugin.json").wstring(),manifest.dump(2)))throw std::runtime_error(i18n::Tr("写入插件清单失败"));
             std::string validationError;if(!pluginvalidation::NativeDll((staging/fs::u8path(copy.entry)).wstring(),validationError))throw std::runtime_error(validationError);
+            if(m_netCancel.load())throw std::runtime_error("Download cancelled");
             fs::rename(staging,target);owned=false;
             PushMsg(NetKind::InstallOk,copy.name);
         }catch(const std::exception& error) {
@@ -392,7 +397,9 @@ void PluginManager::PumpNetResults() {
 }
 
 void PluginManager::Shutdown() {
+    CancelNetwork();
     if (m_worker.joinable()) m_worker.join();
+    m_netCancel.store(false);
 }
 
 void PluginManager::RefreshInstalledFlags() {
@@ -435,8 +442,12 @@ void PluginManager::DrawMarketWindow(bool* open) {
         ShellExecuteW(nullptr, L"open", PluginRoot().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     }
 
-    if (m_netBusy.load())
-        ImGui::TextColored(ImVec4(1, 0.85f, 0.4f, 1), i18n::Tr("网络任务进行中..."));
+    if (m_netBusy.load()){
+        ImGui::TextColored(ImVec4(1, 0.85f, 0.4f, 1), "%s", i18n::Tr("网络任务进行中..."));
+        ImGui::SameLine();ImGui::BeginDisabled(m_netCancel.load());
+        if(ImGui::Button(i18n::Tr("取消下载")))CancelNetwork();
+        ImGui::EndDisabled();
+    }
     if (!lastMarketError.empty())
         ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", lastMarketError.c_str());
 
@@ -656,7 +667,7 @@ void PluginManager::DrawPluginsWindow(bool* open) {
     ImGui::End();
 }
 
-bool PluginManager::InstallLocalArchive(const std::wstring& archive,std::string& error,const MarketItem* expected,bool activate) {
+bool PluginManager::InstallLocalArchive(const std::wstring& archive,std::string& error,const MarketItem* expected,bool activate,std::atomic<bool>* cancel) {
     fs::path staging;bool owned=false;
     struct Cleanup {fs::path& path;bool& owned;~Cleanup(){if(owned)packagezip::RemoveStagingTree(path);}} cleanup{staging,owned};
     try {
@@ -665,7 +676,7 @@ bool PluginManager::InstallLocalArchive(const std::wstring& archive,std::string&
         staging=root/(L".install-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64()));
         owned=fs::create_directory(staging);
         if(!owned)throw std::runtime_error(i18n::Tr("无法建立插件临时目录"));
-        if(!packagezip::Extract(archive,0,fs::file_size(archive),staging,error,{},128ull<<20)) return false;
+        if(!packagezip::Extract(archive,0,fs::file_size(archive),staging,error,[cancel](const std::wstring&,uint64_t,uint64_t){return !cancel||!cancel->load();},128ull<<20)) return false;
         fs::path source;
         for(const auto& entry:fs::directory_iterator(staging)) {
             if(!entry.is_directory() || !source.empty()) throw std::runtime_error(i18n::Tr("插件包必须仅包含一个插件文件夹"));
@@ -682,6 +693,7 @@ bool PluginManager::InstallLocalArchive(const std::wstring& archive,std::string&
         std::string validationError;if(!pluginvalidation::NativeDll((source/dll).wstring(),validationError))throw std::runtime_error(validationError);
         fs::path target=root/fs::u8path(id);
         if(fs::exists(target)) throw std::runtime_error(i18n::Tr("该插件已存在，请先在插件管理中卸载旧版"));
+        if(cancel&&cancel->load())throw std::runtime_error("Download cancelled");
         fs::rename(source,target);
         if(!activate)return true;
         ScanAndLoad();RefreshInstalledFlags();

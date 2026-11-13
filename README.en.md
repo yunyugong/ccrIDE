@@ -6,6 +6,8 @@ A lightweight C++ IDE for **Windows x64**, focused on fast, single-file and comp
 
 [Download installer](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/ccrIDE-Setup-v0.3.7.2.exe) · [Download portable bundle](https://github.com/yunyugong/ccrIDE/releases/download/v0.3.7.2/ccrIDE-v0.3.7.2-win64-with-GCC.zip) · [Plugin API](docs/plugin-api.md)
 
+The development branch is preparing **v0.3.8** with background search/header models, cancellable downloads and toolbar labels. See [implementation notes](docs/responsiveness-0.3.8.md). Download links below still point to the published stable release.
+
 ![ccrIDE v0.3.7.2 English workspace with file tree, code editor and output panel](docs/images/workspace-en.png)
 
 <details>

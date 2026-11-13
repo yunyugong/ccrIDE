@@ -19,6 +19,8 @@ cmake --build build/cmake -j 4
 ctest --test-dir build/cmake --output-on-failure
 ```
 
+Release is the default configuration (`-O3 -DNDEBUG` with GCC). To debug the IDE itself, select `-DCMAKE_BUILD_TYPE=Debug` or `build.ps1 -BuildType Debug`. An explicit build configuration is preserved.
+
 Set `CMAKE_CXX_COMPILER` to choose a compiler and use a fresh build directory when changing toolchains. Set `Python3_EXECUTABLE` if needed. `build.ps1` wraps this same configuration; it accepts compiler/dependency/build-directory options and `-Test`. Disable `BUILD_TESTING` to build without the test dependency on Python.
 
 The internal application target is still named `MiniCPP`; release executables are named **ccrIDE** and written to `build/releases/`. Existing artifacts are preserved with a serial suffix on rebuild. Version metadata includes build time; executable filenames do not. The native `ccride_installer.exe` is only a stub until packaging appends its payload.

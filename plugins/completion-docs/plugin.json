@@ -1,7 +1,7 @@
 {
   "id": "completion-docs",
   "name": "补全注释",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "ccrIDE",
   "description": "为代码补全提供完整注释、头文件来源切换和可点击网址",
   "entry": "completion-docs.dll",

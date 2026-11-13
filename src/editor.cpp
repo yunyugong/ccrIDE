@@ -1,3 +1,4 @@
+#include "background_index.h"
 #include "i18n.h"
 #include "language_host.h"
 #include "line_changes.h"
@@ -295,6 +296,7 @@ bool CodeEditor::IsPosInStringOrComment(size_t pos) const {
 }
 
 void CodeEditor::InvalidateAll() {
+    ++m_textRevision;
     m_lineChangesDirty = true;
     m_decorationDirty = true;
     m_linesDirty = true;
@@ -1225,24 +1227,30 @@ void CodeEditor::EnsureWordPool() {
 // 翻译单元包含当前文档，缓存必须随文档、路径及编译器变化失效。
 // 仿小熊猫 CppPreprocessor: 头文件里的类型/函数/成员都会进入符号表, 未 include 的则不会出现。
 void CodeEditor::EnsureHeaderModel() const {
-    std::vector<std::string> incs = SymbolIndex::I().ExtractIncludeNames(m_text);
+    const bool hasIncludes=m_text.find("#")!=std::string::npos;
     uint64_t sig = 1469598103934665603ull;
     auto hashText = [&](const std::string& value) {
         for (unsigned char c : value) { sig ^= c; sig *= 1099511628211ull; }
         sig ^= 0x1f; sig *= 1099511628211ull;
     };
-    hashText(m_text);
+    if(!background::Index::I().Enabled()||m_headerHashRevision!=m_textRevision){
+        hashText(m_text);m_headerTextHash=sig;m_headerHashRevision=m_textRevision;
+    }else sig=m_headerTextHash;
     hashText(utils::WToU8(m_path));
     hashText(g_app.settings.gppPath);
-    for (auto& n : incs) {
-        for (unsigned char c : n) { sig ^= c; sig *= 1099511628211ull; }
-        sig ^= 0x1f; sig *= 1099511628211ull;
-    }
     if (m_hdrValid && sig == m_hdrSig) return;
+    if(background::Index::I().Enabled() && hasIncludes){
+        if(sig!=m_hdrSig){m_hdrValid=false;m_hdrSig=sig;m_hdrUnit={};m_hdr.Rebuild("");}
+        auto result=background::Index::I().Headers(m_uid,sig,m_text,m_path,utils::U8ToW(g_app.settings.gppPath));
+        m_headerPending=!result;
+        if(result){m_hdrUnit=std::move(result->unit);m_hdr=std::move(result->model);m_hdrValid=true;}
+        return;
+    }
+    m_headerPending=false;
     m_hdrSig = sig;
     m_hdrValid = true;
     m_hdr.SetSystemSource(true);
-    if (incs.empty() || !SymbolIndex::I().HasIncludeDirs()) {
+    if (!hasIncludes || !SymbolIndex::I().HasIncludeDirs()) {
         m_hdrUnit = SymbolIndex::HeaderUnit{};
         m_hdr.Rebuild("");
         return;
@@ -1419,14 +1427,15 @@ void CodeEditor::GatherHeaderCandidates(const std::string& phrase, bool localQuo
 
     // 目录级缓存: 仅当"来源 + 目录前缀 + 当前文件"变化时才重新扫盘 (输入文件名时只过滤)
     std::string key = std::string(localQuote ? "L" : "S") + "|" + dirPart + "|" +
-                      std::to_string(m_uid) + "|" + utils::WToU8(m_path);
+                      std::to_string(m_uid) + "|" + utils::WToU8(m_path)+"|"+g_app.settings.gppPath;
     if (key != m_fileCompKey) {
         m_fileCompKey = key;
         m_fileCompCache.clear();
         std::unordered_set<std::string> seen;
         std::vector<std::pair<std::wstring,int>> roots;
         if (localQuote && HasPath()) roots.push_back({ utils::DirName(m_path), 0 });   // "..." 先查本地
-        for (auto& d : SymbolIndex::I().IncludeDirs()) roots.push_back({ d, 1 });      // 再查 include 路径
+        for (auto& d : SymbolIndex::I().IncludeDirs()) roots.push_back({ d, 1 });
+        m_includeDirsPending=!SymbolIndex::I().IncludePathsReady();      // 再查 include 路径
         for (auto& r : roots) {
             std::wstring dir = r.first;
             if (!dirPart.empty()) dir += L"\\" + utils::U8ToW(dirPart);
@@ -2477,7 +2486,7 @@ void CodeEditor::OpenCompletion() {
     m_compIdx = 0;
     m_compScroll = 0;
     m_compTouched = false;                     // 新弹窗: 尚未人工选定
-    m_compOpen = !m_compItems.empty() || m_languagePending;
+    m_compOpen = !m_compItems.empty() || m_languagePending || m_headerPending;
 }
 
 void CodeEditor::UpdateCompletion() {
@@ -2497,7 +2506,7 @@ void CodeEditor::UpdateCompletion() {
     m_compItems.clear();
     GatherCandidates(m_compPrefix, m_compItems);
     if (m_compIdx >= (int)m_compItems.size()) m_compIdx = 0;
-    if (m_compItems.empty() && !m_languagePending) m_compOpen = false;
+    if (m_compItems.empty() && !m_languagePending && !m_headerPending) m_compOpen = false;
 }
 
 bool CodeEditor::AcceptCompletion() {
@@ -2846,6 +2855,17 @@ void CodeEditor::DrawContextMenu() {
 //  主绘制
 // ===================================================================
 void CodeEditor::Draw() {
+    if(m_includeDirsPending){
+        SymbolIndex::I().IncludeDirs();
+        if(SymbolIndex::I().IncludePathsReady()){
+            m_includeDirsPending=false;m_fileCompKey.clear();
+            if(m_compOpen)UpdateCompletion();
+        }
+    }
+    if(m_headerPending){
+        EnsureHeaderModel();
+        if(!m_headerPending && g_app.settings.codeCompletion && m_compOpen)UpdateCompletion();
+    }
     ImGuiWindow* editorHost=ImGui::GetCurrentWindow();
     RefreshLineChanges();
     if (!g_app.settings.codeCompletion) { CloseCompletion(); CloseCalltip(); }
@@ -3043,6 +3063,7 @@ void CodeEditor::Draw() {
     if (windowFocused && !io.WantCaptureKeyboard && !MultiKeyboard()) {
         // 补全弹窗导航 (编辑键在下方始终可用, 不再被弹窗分支独占)
         bool keyUsed = false;
+        if(m_compOpen && m_compItems.empty() && ImGui::IsKeyPressed(ImGuiKey_Escape)){CloseCompletion();keyUsed=true;}
         if (m_compOpen && !m_compItems.empty()) {
             if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
                 m_compIdx = (m_compIdx - 1 + (int)m_compItems.size()) % (int)m_compItems.size();
@@ -3183,7 +3204,7 @@ void CodeEditor::Draw() {
                         GatherCandidates(m_compPrefix, m_compItems);
                         m_compIdx = 0;
                         m_compTouched = false;
-                        m_compOpen = !m_compItems.empty() || m_languagePending;
+                        m_compOpen = !m_compItems.empty() || m_languagePending || m_headerPending;
                     }
                     // 参数签名提示: "(" 弹出, ")" 关闭
                     if (ch == '(') {

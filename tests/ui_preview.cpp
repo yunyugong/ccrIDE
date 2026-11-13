@@ -464,6 +464,34 @@ int main(int argc, char** argv) {
                 if(frame==2)SaveFrame(output/(scenario==2?"tasks-compact.bmp":scenario==1?"tasks-light.bmp":"tasks-dark.bmp"),width,height);
             }
         }
+
+        if(scenario==0){
+            g_app.plugins.UnloadAll();
+            background::Index::I().Enable();
+            auto* asyncEditor=g_app.ActiveEditor();
+            if(asyncEditor){
+                g_app.settings.codeCompletion=true;
+                asyncEditor->SetText("#include <iostream>\nint main(){ std::cin. }\n");
+                asyncEditor->RebuildLines();asyncEditor->m_cursor=asyncEditor->m_text.find("cin.")+4;
+                asyncEditor->OpenCompletion();
+                bool initiallyPending=asyncEditor->m_headerPending;
+                auto started=GetTickCount64();bool hasGet=false;int completedFrames=0;
+                do {
+                    ImGui_ImplOpenGL3_NewFrame();ImGui_ImplGlfw_NewFrame();ImGui::NewFrame();
+                    DrawMainMenuBar();DrawWorkspaceToolbar();DrawStatusBar();DrawActivityBar();DrawWorkspaceDock();
+                    DrawFileTreeWindow();g_app.console.DrawWindow(&g_app.showConsole);DrawEditorWindow();
+                    ImGui::Render();glViewport(0,0,width,height);glClear(GL_COLOR_BUFFER_BIT);ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+                    for(const auto& item:asyncEditor->m_compItems)if(item.label=="get")hasGet=true;
+                    auto* popup=ImGui::FindWindowByName("##completion");
+                    if(hasGet&&!asyncEditor->m_headerPending&&asyncEditor->m_compOpen&&popup&&popup->Active&&!popup->Hidden)++completedFrames;
+                    if(completedFrames>=4){SaveFrame(output/"background-completion.bmp",width,height);break;}
+                    Sleep(10);
+                }while(GetTickCount64()-started<10000);
+                if(!initiallyPending||!hasGet||asyncEditor->m_headerPending||!asyncEditor->m_compOpen||completedFrames<4){++failures;printf("Background completion failed: initial=%d get=%d pending=%d\n",initiallyPending,hasGet,asyncEditor->m_headerPending);}
+            }else ++failures;
+            background::Index::I().Stop();
+        }
+
         if(scenario==0) UnloadDocumentationTestPlugin();
         g_shellIcons.Clear();
         ImGui_ImplOpenGL3_Shutdown(); ImGui_ImplGlfw_Shutdown(); ImGui::DestroyContext();

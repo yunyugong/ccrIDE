@@ -1,5 +1,6 @@
 #pragma once
 #include <imgui.h>
+#include <algorithm>
 
 namespace toolbar {
 enum class Icon { NewFile, Open, Save, SaveAs, Backup, Undo, Redo, Search, Build, BuildRun, Debug, Run, Stop, Files, Output, AI, Settings };
@@ -53,12 +54,15 @@ inline void DrawIcon(Icon icon, ImVec2 origin, ImU32 color) {
     }
 }
 
-inline bool Button(const char* id, Icon icon, const char* tip, bool selected = false) {
+inline bool Button(const char* id, Icon icon, const char* tip, bool selected = false, const char* caption=nullptr) {
     ImGui::PushStyleColor(ImGuiCol_Button, selected ? ImGui::GetStyleColorVec4(ImGuiCol_Header) : ImVec4(0,0,0,0));
-    bool clicked = ImGui::Button(id, ImVec2(26,26));
+    float height=std::max(26.0f,ImGui::GetFontSize()+10);
+    float width=caption?ImGui::CalcTextSize(caption).x+36:26;
+    bool clicked = ImGui::Button(id, ImVec2(width,height));
     ImGui::PopStyleColor();
     ImVec2 pos = ImGui::GetItemRectMin();
-    DrawIcon(icon, ImVec2(pos.x+5, pos.y+5), ImGui::GetColorU32(ImGuiCol_Text));
+    DrawIcon(icon, ImVec2(pos.x+5, pos.y+(height-16)/2), ImGui::GetColorU32(ImGuiCol_Text));
+    if(caption)ImGui::GetWindowDrawList()->AddText(ImVec2(pos.x+28,pos.y+(height-ImGui::GetFontSize())/2),ImGui::GetColorU32(ImGuiCol_Text),caption);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tip);
     ImGui::SameLine(0,2);
     return clicked;

@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <atomic>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -23,6 +24,8 @@ struct DocRef {
 class SymbolIndex {
 public:
     static SymbolIndex& I();
+    SymbolIndex(std::wstring compiler,std::atomic<bool>* cancel):m_configured(true),m_compiler(std::move(compiler)),m_cancel(cancel){}
+    void SetIncludeDirs(const std::vector<std::wstring>& dirs){m_dirs=dirs;m_dirsDone=true;}
 
     // 取类型成员: 1) 打开文档中定义的类  2) 对应系统头文件  3) (空则由调用方回退内置表)
     // normType 已归一化 (去 std:: / 模板参数 / const / &*)
@@ -56,6 +59,7 @@ public:
                                size_t maxBytes = 12u * 1024 * 1024);
 
     // 是否已配置编译器 include 路径 (无则无法解析头文件, 补全回退内置表)
+    bool IncludePathsReady() const{return m_dirsDone;}
     bool HasIncludeDirs() { return !IncludeDirs().empty(); }
 
 private:
@@ -73,6 +77,9 @@ private:
     std::unordered_set<std::string> m_noHeader;                // 找不到对应头的类型 (负缓存)
     std::unordered_map<uint64_t, size_t> m_docHash;            // 编辑器 uid -> 内容hash (脏检查)
 
+    bool m_configured=false;
+    std::wstring m_compiler;
+    std::atomic<bool>* m_cancel=nullptr;
     bool m_dirsDone = false;
     std::vector<std::wstring> m_dirs;                          // include 搜索路径
 

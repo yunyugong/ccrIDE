@@ -1,3 +1,4 @@
+#include "background_index.h"
 // MiniCPP - 轻量 C++ 符号索引器实现
 // 思路 (同小熊猫C++ 的内置解析器): 对源码做注释/字符串剥离后, 用一个
 // 花括号栈 + 少量状态机扫描 namespace/class/struct 结构, 收集类的方法与字段。
@@ -8,6 +9,8 @@
 #include <cctype>
 #include <algorithm>
 #include <functional>
+#include <filesystem>
+#include <fstream>
 
 SymbolIndex& SymbolIndex::I() {
     static SymbolIndex inst;
@@ -300,11 +303,15 @@ static bool FileExists(const std::wstring& p) {
 }
 
 void SymbolIndex::EnsureIncludeDirs() {
-    if (m_dirsDone) return;
-    m_dirsDone = true;
-    extern App g_app;
-    std::wstring gpp = utils::U8ToW(g_app.settings.gppPath);
-
+    std::wstring gpp=m_configured?m_compiler:utils::U8ToW(g_app.settings.gppPath);
+    if(!m_configured && m_compiler!=gpp){
+        m_compiler=gpp;m_dirsDone=false;m_dirs.clear();m_classes.clear();m_alias.clear();m_parsedHeaders.clear();m_noHeader.clear();m_docHash.clear();
+    }
+    if(m_dirsDone)return;
+    if(!m_configured && background::Index::I().Enabled()){
+        m_dirsDone=background::Index::I().Directories(gpp,m_dirs);return;
+    }
+    m_dirsDone=true;
     if (!gpp.empty()) {
         // This legacy lazy query is synchronous; do not wait on busy foreground jobs.
         execution::Request query;
@@ -313,7 +320,7 @@ void SymbolIndex::EnsureIncludeDirs() {
         query.args={L"-x",L"c++",L"-E",L"-v",L"nul"};
         query.label="头文件路径查询";query.lane=execution::Lane::Background;
         query.queueTimeoutMs=100;query.limits={6000,0,1024*1024};
-        query.cancel=&g_app.shuttingDown;
+        query.cancel=m_cancel?m_cancel:&g_app.shuttingDown;
         auto result=execution::Run(query);
         std::string all=result.err+"\n"+result.out;
         if(!utils::IsValidUtf8(all)){
@@ -381,6 +388,7 @@ const std::vector<std::wstring>& SymbolIndex::IncludeDirs() {
 }
 
 bool SymbolIndex::ParseSystemHeader(const std::string& headerName, int depth) {
+    if(!m_configured&&background::Index::I().Enabled())return false;
     if (m_parsedHeaders.count(headerName)) return true;
     if (m_noHeader.count(headerName)) return false;
     // 递归跟随 #include 的层数与总量上限 (libstdc++ 头文件互相包含很深)
@@ -482,11 +490,11 @@ static void ExpandIncludesInPlace(const std::string& text, const std::wstring& d
                                   std::string& out, size_t maxBytes, int depth,
                                   std::vector<std::wstring>& files,
                                   std::vector<SymbolIndex::TuSegment>& segs,
-                                  int fileId, int lineStart) {
-    if (depth > 64 || out.size() >= maxBytes) return;
+                                  int fileId, int lineStart, std::atomic<bool>* cancel) {
+    if ((cancel&&cancel->load()) || depth > 64 || out.size() >= maxBytes) return;
     size_t i = 0, n = text.size();
     int ln = lineStart;
-    while (i < n && out.size() < maxBytes) {
+    while (i < n && out.size() < maxBytes && !(cancel&&cancel->load())) {
         size_t le = text.find('\n', i);
         if (le == std::string::npos) le = n;
         // 该行是否为 #include
@@ -527,24 +535,26 @@ static void ExpandIncludesInPlace(const std::string& text, const std::wstring& d
                 for (auto& c : key) c = (char)tolower((unsigned char)c);
                 if (visited.insert(key).second) {
                     std::string ft;
-                    if (utils::ReadFileU8(path, ft)) {
-                        if (ft.size() > (8u << 20)) ft.resize(8u << 20);
+                    std::ifstream header(std::filesystem::path(path),std::ios::binary);
+                    if(header){
+                        ft.resize(size_t(std::min<unsigned long long>(utils::FileSize(path),8u<<20)));
+                        header.read(ft.data(),std::streamsize(ft.size()));ft.resize(size_t(header.gcount()));
                         int fid = GetFileId(files, path);
                         out += '\n';
                         ExpandIncludesInPlace(ft, utils::DirName(path), dirs, visited,
-                                              out, maxBytes, depth + 1, files, segs, fid, 1);
+                                              out, maxBytes, depth + 1, files, segs, fid, 1, cancel);
                     }
                 }
             }
         } else {
             SymbolIndex::TuSegment sg;
             sg.outStart = out.size();
-            sg.outLen = le - i;
+            sg.outLen = std::min(le-i,maxBytes-out.size());
             sg.fileId = fileId;
             sg.line = ln;
             segs.push_back(sg);
-            out.append(text, i, le - i);
-            out += '\n';
+            out.append(text, i, sg.outLen);
+            if(out.size()<maxBytes)out += '\n';
         }
         ln++;
         i = le + 1;
@@ -562,7 +572,7 @@ SymbolIndex::HeaderUnit SymbolIndex::BuildHeaderUnit(const std::string& docText,
     int docId = docPath.empty() ? -1 : GetFileId(u.files, docPath);
     std::wstring localDir = docPath.empty() ? std::wstring() : utils::DirName(docPath);
     ExpandIncludesInPlace(docText, localDir, m_dirs, visited, u.text, maxBytes, 0,
-                          u.files, u.segments, docId, 1);
+                          u.files, u.segments, docId, 1, m_cancel);
     return u;
 }
 

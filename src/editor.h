@@ -122,6 +122,9 @@ public:
     // ---- 头文件语义模型 (解析本文件 #include 的头文件, 递归内联; 仿 CppPreprocessor) ----
     mutable CodeModel m_hdr;
     mutable SymbolIndex::HeaderUnit m_hdrUnit;   // 翻译单元文本 + 行来源映射 (跳转定义用)
+    uint64_t m_textRevision=0;
+    mutable uint64_t m_headerHashRevision=~uint64_t(0),m_headerTextHash=0;
+    mutable bool m_headerPending=false;
     mutable bool     m_hdrValid = false;
     mutable uint64_t m_hdrSig = 0;   // 对应的 #include 集合签名
     void EnsureHeaderModel() const;
@@ -134,6 +137,7 @@ public:
         bool         isDir = false;
     };
     std::vector<FileCompEntry> m_fileCompCache;               // 当前目录层级的候选缓存
+    bool m_includeDirsPending=false;
     std::string m_fileCompKey;                                // 缓存键 (来源+目录前缀+文件)
     std::unordered_map<std::wstring,int> m_fileUsage;         // fullPath -> 使用次数
     bool m_fileUsageLoaded = false;

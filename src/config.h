@@ -74,6 +74,7 @@ struct Settings {
     int scrollbarSize = 11;
     int recoveryIntervalSec = 3;
     bool showToolbar = true;
+    bool toolbarLabels = true;
     bool showStatusBar = true;
     bool showActivityBar = true;
 

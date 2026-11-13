@@ -1,5 +1,6 @@
 param(
     [string]$Version = "",
+    [ValidateSet("Release","Debug","RelWithDebInfo","MinSizeRel")][string]$BuildType = "Release",
     [string]$Compiler = "",
     [string]$Dependencies = (Join-Path $PSScriptRoot "dependencies"),
     [string]$BuildDirectory = (Join-Path $PSScriptRoot "build\cmake"),
@@ -10,7 +11,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $cmake = (Get-Command cmake -ErrorAction Stop).Source
-$configure = @("-S",$PSScriptRoot,"-B",$BuildDirectory,"-G","MinGW Makefiles","-DCCRIDE_DEPS_DIR=$Dependencies","-DBUILD_TESTING=$($Test.IsPresent.ToString().ToUpperInvariant())")
+$configure = @("-S",$PSScriptRoot,"-B",$BuildDirectory,"-G","MinGW Makefiles","-DCMAKE_BUILD_TYPE=$BuildType","-DCCRIDE_DEPS_DIR=$Dependencies","-DBUILD_TESTING=$($Test.IsPresent.ToString().ToUpperInvariant())")
 if($Version) { $configure += "-DCCRIDE_RELEASE_VERSION=$Version" }
 if($Compiler) { $configure += "-DCMAKE_CXX_COMPILER=$Compiler" }
 if($ImGuiDirectory) { $configure += "-DIMGUI_DIR=$ImGuiDirectory" }
